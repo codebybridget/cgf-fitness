@@ -8,11 +8,7 @@ import axios from "axios"
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
-<<<<<<< HEAD
-   "http://localhost:5000/api"
-=======
    "https://cgf-fitness.onrender.com/api"
->>>>>>> ca008a4 (Configure production backend API URL)
 
 /*
 |--------------------------------------------------------------------------
