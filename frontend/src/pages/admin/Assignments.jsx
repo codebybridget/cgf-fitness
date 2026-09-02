@@ -5,6 +5,7 @@ import {
   Dumbbell,
   Loader2,
   Search,
+  Trash2,
   UserCheck,
   Users,
 } from "lucide-react"
@@ -16,6 +17,7 @@ import {
 } from "react"
 
 import {
+  cancelProgramAssignment,
   createProgramAssignment,
   getMembers,
   getProgramAssignments,
@@ -26,67 +28,51 @@ import {
 |--------------------------------------------------------------------------
 | Normalize workout type
 |--------------------------------------------------------------------------
-|
-| Supports both the current MongoDB values and older program values.
-|
-| Examples:
-| "Lower Body"  -> "Lower Body"
-| "lower_body"  -> "Lower Body"
-| "lower-body"  -> "Lower Body"
-| "Upper Body"  -> "Upper Body"
-| "upper_body"  -> "Upper Body"
-| "CrossFit"    -> "CrossFit"
-| "crossfit"    -> "CrossFit"
-| "Tabata"      -> "Tabata"
-| "tabata"      -> "Tabata"
-|--------------------------------------------------------------------------
 */
 
 const normalizeWorkoutType = (
-value,
+  value,
 ) => {
-const normalized =
-  String(
+  const normalized =
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(
+        /[_-]+/g,
+        " ",
+      )
+
+  if (
+    normalized ===
+    "lower body"
+  ) {
+    return "Lower Body"
+  }
+
+  if (
+    normalized ===
+    "upper body"
+  ) {
+    return "Upper Body"
+  }
+
+  if (
+    normalized ===
+    "crossfit"
+  ) {
+    return "CrossFit"
+  }
+
+  if (
+    normalized ===
+    "tabata"
+  ) {
+    return "Tabata"
+  }
+
+  return String(
     value || "",
-  )
-    .trim()
-    .toLowerCase()
-    .replace(
-      /[_-]+/g,
-      " ",
-    )
-
-if (
-  normalized ===
-  "lower body"
-) {
-  return "Lower Body"
-}
-
-if (
-  normalized ===
-  "upper body"
-) {
-  return "Upper Body"
-}
-
-if (
-  normalized ===
-  "crossfit"
-) {
-  return "CrossFit"
-}
-
-if (
-  normalized ===
-  "tabata"
-) {
-  return "Tabata"
-}
-
-return String(
-  value || "",
-).trim()
+  ).trim()
 }
 
 const workoutTypes = [
@@ -153,6 +139,9 @@ function Assignments() {
   const [assigning, setAssigning] =
     useState(false)
 
+  const [deletingId, setDeletingId] =
+    useState("")
+
   const [error, setError] =
     useState("")
 
@@ -192,71 +181,64 @@ function Assignments() {
           ? memberResponse.members
           : [],
       )
-/*
-|--------------------------------------------------------------------------
-| Programs from MongoDB
-|--------------------------------------------------------------------------
-|
-| Load all programs and keep every program that is not
-| explicitly marked inactive.
-|
-| This supports:
-| - New programs: isActive === true
-| - Older programs: isActive is missing
-| - Excludes explicitly inactive programs
-|--------------------------------------------------------------------------
-*/
 
+      /*
+      |--------------------------------------------------------------------------
+      | Programs from MongoDB
+      |--------------------------------------------------------------------------
+      */
 
-     const programResponse =
-  await getPrograms()
+      const programResponse =
+        await getPrograms()
 
-console.log(
-  "PROGRAM API RESPONSE:",
-  programResponse,
-)
+      console.log(
+        "PROGRAM API RESPONSE:",
+        programResponse,
+      )
 
-let loadedPrograms = []
+      let loadedPrograms = []
 
-if (
-  Array.isArray(programResponse)
-) {
-  loadedPrograms =
-    programResponse
-} else if (
-  Array.isArray(
-    programResponse?.programs,
-  )
-) {
-  loadedPrograms =
-    programResponse.programs
-} else if (
-  Array.isArray(
-    programResponse?.data?.programs,
-  )
-) {
-  loadedPrograms =
-    programResponse.data.programs
-} else if (
-  Array.isArray(
-    programResponse?.data,
-  )
-) {
-  loadedPrograms =
-    programResponse.data
-}
+      if (
+        Array.isArray(
+          programResponse,
+        )
+      ) {
+        loadedPrograms =
+          programResponse
+      } else if (
+        Array.isArray(
+          programResponse?.programs,
+        )
+      ) {
+        loadedPrograms =
+          programResponse.programs
+      } else if (
+        Array.isArray(
+          programResponse?.data?.programs,
+        )
+      ) {
+        loadedPrograms =
+          programResponse.data.programs
+      } else if (
+        Array.isArray(
+          programResponse?.data,
+        )
+      ) {
+        loadedPrograms =
+          programResponse.data
+      }
 
-console.log(
-  "LOADED PROGRAMS:",
-  loadedPrograms,
-)
+      console.log(
+        "LOADED PROGRAMS:",
+        loadedPrograms,
+      )
 
-setPrograms(
-  loadedPrograms.filter(
-    (program) =>
-      program?.isActive !== false,
-  ),
-)
+      setPrograms(
+        loadedPrograms.filter(
+          (program) =>
+            program?.isActive !== false,
+        ),
+      )
 
       /*
       |--------------------------------------------------------------------------
@@ -332,53 +314,43 @@ setPrograms(
       memberSearch,
     ])
 
-    /*
-|--------------------------------------------------------------------------
-| Filter programs
-|--------------------------------------------------------------------------
-|
-| Programs created by different versions of the Program Builder may
-| contain either:
-|
-|   "Lower Body"
-|   "lower_body"
-|
-|   "Upper Body"
-|   "upper_body"
-|
-| We normalize both formats before filtering.
-|--------------------------------------------------------------------------
-*/
-const filteredPrograms =
-  useMemo(() => {
-    if (!workoutType) {
-      return programs
-    }
+  /*
+  |--------------------------------------------------------------------------
+  | Filter programs
+  |--------------------------------------------------------------------------
+  */
 
-    const selectedType =
-      normalizeWorkoutType(
-        workoutType,
-      )
+  const filteredPrograms =
+    useMemo(() => {
+      if (!workoutType) {
+        return programs
+      }
 
-    return programs.filter(
-      (program) => {
-        const programType =
-          normalizeWorkoutType(
-            program?.workoutType ||
-              program?.type ||
-              program?.category,
-          )
-
-        return (
-          programType ===
-          selectedType
+      const selectedType =
+        normalizeWorkoutType(
+          workoutType,
         )
-      },
-    )
-  }, [
-    programs,
-    workoutType,
-  ])
+
+      return programs.filter(
+        (program) => {
+          const programType =
+            normalizeWorkoutType(
+              program?.workoutType ||
+                program?.type ||
+                program?.category,
+            )
+
+          return (
+            programType ===
+            selectedType
+          )
+        },
+      )
+    }, [
+      programs,
+      workoutType,
+    ])
+
   /*
   |--------------------------------------------------------------------------
   | Selected member
@@ -420,7 +392,7 @@ const filteredPrograms =
   |--------------------------------------------------------------------------
   */
 
-    const handleWorkoutTypeChange =
+  const handleWorkoutTypeChange =
     (event) => {
       const value =
         event.target.value
@@ -539,6 +511,112 @@ const filteredPrograms =
       setAssigning(false)
     }
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Delete / cancel assignment
+  |--------------------------------------------------------------------------
+  */
+
+  const handleDeleteAssignment =
+    async (
+      assignment,
+    ) => {
+      const assignmentId =
+        assignment?._id
+
+      if (!assignmentId) {
+        setError(
+          "Unable to identify this workout assignment.",
+        )
+
+        return
+      }
+
+      const member =
+        assignment.member
+
+      const program =
+        assignment.program
+
+      const memberName =
+        member
+          ? `${member.firstName || ""} ${member.lastName || ""}`.trim()
+          : "this member"
+
+      const programName =
+        program?.name ||
+        "this workout"
+
+      const confirmed =
+        window.confirm(
+          `Delete the "${programName}" assignment for ${memberName}? This will remove the active assignment from the member.`,
+        )
+
+      if (!confirmed) {
+        return
+      }
+
+      try {
+        setError("")
+        setSuccess("")
+        setDeletingId(
+          assignmentId,
+        )
+
+        const response =
+          await cancelProgramAssignment(
+            assignmentId,
+          )
+
+        if (
+          response?.success ===
+          false
+        ) {
+          throw new Error(
+            response?.message ||
+              "Unable to delete assignment.",
+          )
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Remove the assignment immediately
+        |--------------------------------------------------------------------------
+        */
+
+        setAssignments(
+          (current) =>
+            current.filter(
+              (item) =>
+                String(
+                  item._id,
+                ) !==
+                String(
+                  assignmentId,
+                ),
+            ),
+        )
+
+        setSuccess(
+          response?.message ||
+            "Workout assignment deleted successfully.",
+        )
+      } catch (err) {
+        console.error(
+          "Delete assignment error:",
+          err,
+        )
+
+        setError(
+          err.response?.data?.message ||
+            err.message ||
+            "Unable to delete workout assignment.",
+        )
+      } finally {
+        setDeletingId("")
+      }
+    }
 
   /*
   |--------------------------------------------------------------------------
@@ -681,9 +759,7 @@ const filteredPrograms =
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-yellow-400 text-black">
                             <span className="text-xs font-black">
                               {name
-                                .split(
-                                  " ",
-                                )
+                                .split(" ")
                                 .map(
                                   (
                                     part,
@@ -979,6 +1055,12 @@ const filteredPrograms =
           assignments={
             assignments
           }
+          deletingId={
+            deletingId
+          }
+          onDelete={
+            handleDeleteAssignment
+          }
         />
       </main>
     </div>
@@ -1012,6 +1094,8 @@ function DateField({
 
 function AssignmentHistory({
   assignments,
+  deletingId,
+  onDelete,
 }) {
   return (
     <section className="mt-8">
@@ -1059,6 +1143,14 @@ function AssignmentHistory({
                   ? `${member.firstName || ""} ${member.lastName || ""}`.trim()
                   : "Member"
 
+              const isDeleting =
+                String(
+                  deletingId,
+                ) ===
+                String(
+                  assignment._id,
+                )
+
               return (
                 <div
                   key={
@@ -1079,7 +1171,7 @@ function AssignmentHistory({
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-lime-400/10 px-3 py-1 text-[9px] font-black uppercase text-lime-400">
                         {
                           assignment.status
@@ -1091,6 +1183,34 @@ function AssignmentHistory({
                           assignment.startDate,
                         )}
                       </span>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDelete(
+                            assignment,
+                          )
+                        }
+                        disabled={
+                          isDeleting
+                        }
+                        className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-[9px] font-black uppercase text-red-400 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isDeleting ? (
+                          <Loader2
+                            size={13}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <Trash2
+                            size={13}
+                          />
+                        )}
+
+                        {isDeleting
+                          ? "Deleting..."
+                          : "Delete"}
+                      </button>
                     </div>
                   </div>
                 </div>
