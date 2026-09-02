@@ -1,5 +1,6 @@
 import {
   getMyTodayWorkout,
+  getMyPrograms,
 } from "../api/api.js"
 
 /*
@@ -7,145 +8,270 @@ import {
 | Get today's workout
 |--------------------------------------------------------------------------
 |
-| This function now gets the member's real assigned workout
-| from the backend instead of using the hard-coded weekly schedule.
+| The Dashboard uses the same MongoDB assignment source as the
+| Weekly Schedule.
+|
+| We first try the dedicated /my-today endpoint.
+| If that endpoint says there is no workout, we fall back to
+| /my-programs and determine today's assignment on the client
+| using the user's actual calendar date.
 |
 */
 
-async function getTodayWorkout() {
-  try {
-    const response =
-      await getMyTodayWorkout()
+function getTodayDateString() {
+  const now = new Date()
 
-    /*
-    |--------------------------------------------------------------------------
-    | No workout assigned
-    |--------------------------------------------------------------------------
-    */
+  const year =
+    now.getFullYear()
 
-    if (
-      !response?.hasWorkout ||
-      !response?.workout
-    ) {
-      return {
-        hasWorkout: false,
+  const month =
+    String(
+      now.getMonth() + 1,
+    ).padStart(2, "0")
 
-        day:
-          response?.day ||
-          new Date().toLocaleDateString(
-            "en-US",
-            {
-              weekday:
-                "long",
-            },
-          ),
+  const day =
+    String(
+      now.getDate(),
+    ).padStart(2, "0")
 
-        date:
-          response?.date ||
-          new Date()
-            .toISOString()
-            .split("T")[0],
+  return `${year}-${month}-${day}`
+}
 
-        workout: null,
+/*
+|--------------------------------------------------------------------------
+| Convert a date value to YYYY-MM-DD
+|--------------------------------------------------------------------------
+|
+| Important:
+| We intentionally use the calendar date represented by the value.
+| This prevents timezone shifts from causing today's assignment
+| to appear as tomorrow/yesterday.
+|
+*/
 
-        workoutType:
-          "rest",
+function parseDateOnly(value) {
+  if (!value) {
+    return null
+  }
 
-        title:
-          "Rest Day",
+  const stringValue =
+    String(value)
 
-        description:
-          "No workout has been assigned for today.",
+  /*
+  |--------------------------------------------------------------------------
+  | ISO date already in YYYY-MM-DD format
+  |--------------------------------------------------------------------------
+  */
 
-        startTime: "",
+  const match =
+    stringValue.match(
+      /^(\d{4})-(\d{2})-(\d{2})/,
+    )
 
-        endTime: "",
+  if (match) {
+    return `${match[1]}-${match[2]}-${match[3]}`
+  }
 
-        location:
-          "CGF Gym",
+  const date =
+    new Date(value)
 
-        duration: "",
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return null
+  }
 
-        trainerAssigned:
-          false,
-      }
-    }
+  const year =
+    date.getFullYear()
 
-    /*
-    |--------------------------------------------------------------------------
-    | Real backend workout
-    |--------------------------------------------------------------------------
-    */
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, "0")
 
-    const workout =
-      response.workout
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, "0")
 
-    const program =
-      workout.program || {}
+  return `${year}-${month}-${day}`
+}
 
-    const exercises =
-      Array.isArray(
-        program.exercises,
+/*
+|--------------------------------------------------------------------------
+| Check whether assignment covers today
+|--------------------------------------------------------------------------
+*/
+
+function assignmentCoversToday(
+  assignment,
+  today,
+) {
+  if (!assignment) {
+    return false
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Only active assignments
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    assignment.status &&
+    assignment.status !==
+      "active"
+  ) {
+    return false
+  }
+
+  const startDate =
+    parseDateOnly(
+      assignment.startDate,
+    )
+
+  if (!startDate) {
+    return false
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Assignment has not started
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    startDate >
+    today
+  ) {
+    return false
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Assignment has ended
+  |--------------------------------------------------------------------------
+  */
+
+  const endDate =
+    parseDateOnly(
+      assignment.endDate,
+    )
+
+  if (
+    endDate &&
+    endDate <
+      today
+  ) {
+    return false
+  }
+
+  return true
+}
+
+/*
+|--------------------------------------------------------------------------
+| Find today's assignment
+|--------------------------------------------------------------------------
+*/
+
+function findTodayAssignment(
+  assignments,
+  today,
+) {
+  if (
+    !Array.isArray(
+      assignments,
+    )
+  ) {
+    return null
+  }
+
+  const matching =
+    assignments.filter(
+      (assignment) =>
+        assignmentCoversToday(
+          assignment,
+          today,
+        ),
+    )
+
+  if (
+    matching.length ===
+    0
+  ) {
+    return null
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | If multiple assignments somehow exist,
+  | use the newest start date.
+  |--------------------------------------------------------------------------
+  */
+
+  matching.sort(
+    (
+      first,
+      second,
+    ) => {
+      const firstDate =
+        parseDateOnly(
+          first.startDate,
+        ) || ""
+
+      const secondDate =
+        parseDateOnly(
+          second.startDate,
+        ) || ""
+
+      return secondDate.localeCompare(
+        firstDate,
       )
-        ? program.exercises
-        : []
+    },
+  )
 
-    const totalSets =
-      exercises.reduce(
-        (
-          total,
-          exercise,
-        ) =>
-          total +
-          (Number(
-            exercise?.sets,
-          ) || 0),
-        0,
-      )
+  return matching[0]
+}
 
+/*
+|--------------------------------------------------------------------------
+| Build normalized workout
+|--------------------------------------------------------------------------
+*/
+
+function buildWorkoutResult(
+  assignment,
+  today,
+) {
+  if (!assignment) {
     return {
-      hasWorkout: true,
-
-      date:
-        response.date,
+      hasWorkout: false,
 
       day:
-        response.day,
+        new Date().toLocaleDateString(
+          "en-US",
+          {
+            weekday:
+              "long",
+          },
+        ),
 
-      workout,
+      date:
+        today,
 
-      assignmentId:
-        workout.assignmentId,
-
-      program,
+      workout: null,
 
       workoutType:
-        program.workoutType ||
-        "Workout",
+        "rest",
 
       title:
-        program.name ||
-        program.workoutType ||
-        "Today's Workout",
+        "Rest Day",
 
       description:
-        program.description ||
-        workout.notes ||
-        "Complete your assigned training session.",
-
-      duration:
-        program.estimatedDuration
-          ? `${program.estimatedDuration} min`
-          : "60 min",
-
-      totalExercises:
-        exercises.length,
-
-      totalSets,
-
-      difficulty:
-        program.difficulty ||
-        "Beginner",
+        "No workout has been assigned for today.",
 
       startTime: "",
 
@@ -154,25 +280,296 @@ async function getTodayWorkout() {
       location:
         "CGF Gym",
 
+      duration: "",
+
       trainerAssigned:
-        Boolean(
+        false,
+    }
+  }
+
+  const program =
+    assignment.program ||
+    {}
+
+  const exercises =
+    Array.isArray(
+      program.exercises,
+    )
+      ? program.exercises
+      : []
+
+  const totalSets =
+    exercises.reduce(
+      (
+        total,
+        exercise,
+      ) =>
+        total +
+        (Number(
+          exercise?.sets,
+        ) || 0),
+      0,
+    )
+
+  const workout = {
+    assignmentId:
+      assignment._id ||
+      assignment.id,
+
+    startDate:
+      assignment.startDate,
+
+    endDate:
+      assignment.endDate,
+
+    notes:
+      assignment.notes ||
+      "",
+
+    program,
+  }
+
+  return {
+    hasWorkout: true,
+
+    date:
+      today,
+
+    day:
+      new Date().toLocaleDateString(
+        "en-US",
+        {
+          weekday:
+            "long",
+        },
+      ),
+
+    workout,
+
+    assignmentId:
+      assignment._id ||
+      assignment.id,
+
+    program,
+
+    workoutType:
+      program.workoutType ||
+      "Workout",
+
+    title:
+      program.name ||
+      program.workoutType ||
+      "Today's Workout",
+
+    description:
+      program.description ||
+      assignment.notes ||
+      "Complete your assigned training session.",
+
+    duration:
+      program.estimatedDuration
+        ? `${program.estimatedDuration} min`
+        : "60 min",
+
+    totalExercises:
+      exercises.length,
+
+    totalSets,
+
+    difficulty:
+      program.difficulty ||
+      "Beginner",
+
+    startTime: "",
+
+    endTime: "",
+
+    location:
+      "CGF Gym",
+
+    trainerAssigned:
+      true,
+
+    notes:
+      assignment.notes ||
+      program.trainerNotes ||
+      "",
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Get today's workout
+|--------------------------------------------------------------------------
+*/
+
+async function getTodayWorkout() {
+  const today =
+    getTodayDateString()
+
+  /*
+  |--------------------------------------------------------------------------
+  | FIRST: Try the dedicated backend endpoint
+  |--------------------------------------------------------------------------
+  */
+
+  try {
+    const response =
+      await getMyTodayWorkout()
+
+    console.log(
+      "TODAY WORKOUT API RESPONSE:",
+      response,
+    )
+
+    /*
+    |--------------------------------------------------------------------------
+    | Backend returned a workout
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      response?.hasWorkout &&
+      response?.workout
+    ) {
+      const workout =
+        response.workout
+
+      const assignment = {
+        _id:
           workout.assignmentId,
+
+        id:
+          workout.assignmentId,
+
+        startDate:
+          workout.startDate,
+
+        endDate:
+          workout.endDate,
+
+        notes:
+          workout.notes,
+
+        program:
+          workout.program,
+      }
+
+      return buildWorkoutResult(
+        assignment,
+        response.date ||
+          today,
+      )
+    }
+
+    console.warn(
+      "Dedicated today-workout endpoint returned no workout. Falling back to member assignments.",
+    )
+  } catch (error) {
+    console.warn(
+      "Today's workout endpoint failed. Falling back to member assignments.",
+      error,
+    )
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | SECOND: Use the same source as Weekly Schedule
+  |--------------------------------------------------------------------------
+  */
+
+  try {
+    const response =
+      await getMyPrograms()
+
+    console.log(
+      "MEMBER PROGRAM ASSIGNMENTS:",
+      response,
+    )
+
+    const assignments =
+      Array.isArray(
+        response?.assignments,
+      )
+        ? response.assignments
+        : []
+
+    const assignment =
+      findTodayAssignment(
+        assignments,
+        today,
+      )
+
+    if (assignment) {
+      console.log(
+        "TODAY'S ASSIGNMENT FOUND:",
+        assignment,
+      )
+
+      return buildWorkoutResult(
+        assignment,
+        today,
+      )
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | No assignment for today
+    |--------------------------------------------------------------------------
+    */
+
+    console.log(
+      "No assignment covers today's date:",
+      today,
+    )
+
+    return {
+      hasWorkout: false,
+
+      day:
+        new Date().toLocaleDateString(
+          "en-US",
+          {
+            weekday:
+              "long",
+          },
         ),
 
-      notes:
-        workout.notes ||
-        program.trainerNotes ||
-        "",
+      date:
+        today,
+
+      workout: null,
+
+      workoutType:
+        "rest",
+
+      title:
+        "Rest Day",
+
+      description:
+        "No workout has been assigned for today.",
+
+      startTime: "",
+
+      endTime: "",
+
+      location:
+        "CGF Gym",
+
+      duration: "",
+
+      trainerAssigned:
+        false,
     }
   } catch (error) {
     console.error(
-      "Get today's workout error:",
+      "Unable to retrieve today's workout from member assignments:",
       error,
     )
 
     /*
     |--------------------------------------------------------------------------
-    | Do not crash the dashboard
+    | Do not crash Dashboard
     |--------------------------------------------------------------------------
     */
 
@@ -189,9 +586,7 @@ async function getTodayWorkout() {
         ),
 
       date:
-        new Date()
-          .toISOString()
-          .split("T")[0],
+        today,
 
       workout: null,
 
