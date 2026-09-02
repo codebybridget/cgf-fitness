@@ -72,13 +72,65 @@ app.use(
   }),
 )
 
+/*
+|--------------------------------------------------------------------------
+| CORS
+|--------------------------------------------------------------------------
+|
+| Production frontend:
+| https://cgf-fitness-a.onrender.com
+|
+| Local development:
+| http://localhost:5173
+|
+*/
+
+const allowedOrigins = [
+  "https://cgf-fitness-a.onrender.com",
+  "http://localhost:5173",
+  process.env.CLIENT_URL,
+].filter(Boolean)
+
 app.use(
   cors({
-    origin:
-      process.env.CLIENT_URL ||
-      "http://localhost:5173",
+    origin: (origin, callback) => {
+      /*
+       * Allow requests that do not have an Origin header.
+       * This includes some server-to-server requests,
+       * health checks and direct API requests.
+       */
+      if (!origin) {
+        return callback(null, true)
+      }
+
+      if (
+        allowedOrigins.includes(origin)
+      ) {
+        return callback(null, true)
+      }
+
+      return callback(
+        new Error(
+          `CORS blocked origin: ${origin}`,
+        ),
+      )
+    },
 
     credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
   }),
 )
 
@@ -122,7 +174,7 @@ app.use(
         response.setHeader(
           "Access-Control-Allow-Origin",
           process.env.CLIENT_URL ||
-            "http://localhost:5173",
+            "https://cgf-fitness-a.onrender.com",
         )
 
         response.setHeader(
@@ -208,6 +260,7 @@ app.use(
   "/api/auth",
   authRoutes,
 )
+
 app.use(
   "/api/payments",
   paymentRoutes,
@@ -392,6 +445,25 @@ app.use(
 
     /*
     |--------------------------------------------------------------------------
+    | CORS Errors
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      error?.message?.startsWith(
+        "CORS blocked origin:",
+      )
+    ) {
+      return res.status(403).json({
+        success: false,
+
+        message:
+          "CORS policy blocked this request.",
+      })
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Multer Errors
     |--------------------------------------------------------------------------
     */
@@ -448,9 +520,11 @@ app.use(
     */
 
     if (
-      error?.message?.toLowerCase?.().includes(
-        "invalid image",
-      )
+      error?.message
+        ?.toLowerCase?.()
+        .includes(
+          "invalid image",
+        )
     ) {
       return res.status(400).json({
         success: false,
@@ -460,9 +534,11 @@ app.use(
     }
 
     if (
-      error?.message?.toLowerCase?.().includes(
-        "invalid video",
-      )
+      error?.message
+        ?.toLowerCase?.()
+        .includes(
+          "invalid video",
+        )
     ) {
       return res.status(400).json({
         success: false,
@@ -506,11 +582,16 @@ const startServer =
         PORT,
         () => {
           console.log(
-            `CGF Gym API running on http://localhost:${PORT}`,
+            `CGF Gym API running on port ${PORT}`,
           )
 
           console.log(
-            `CGF uploads available at http://localhost:${PORT}/uploads`,
+            `CGF uploads available at /uploads`,
+          )
+
+          console.log(
+            "Allowed CORS origins:",
+            allowedOrigins,
           )
         },
       )
