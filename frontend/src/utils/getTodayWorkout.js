@@ -1,6 +1,7 @@
 import {
   getMyTodayWorkout,
   getMyPrograms,
+  getMyWorkoutLog,
 } from "../api/api.js"
 
 /*
@@ -99,7 +100,9 @@ function assignmentCoversToday(
   }
 
   /*
-  | Only reject assignments explicitly marked inactive.
+  |--------------------------------------------------------------------------
+  | Only active assignments can appear as today's workout.
+  |--------------------------------------------------------------------------
   */
 
   if (
@@ -109,30 +112,21 @@ function assignmentCoversToday(
     return false
   }
 
-  const startDate = parseDateOnly(
-    assignment.startDate,
+  /*
+  |--------------------------------------------------------------------------
+  | Each assignment belongs to one exact calendar date.
+  |--------------------------------------------------------------------------
+  */
+
+  const workoutDate = parseDateOnly(
+    assignment.workoutDate,
   )
 
-  if (!startDate) {
+  if (!workoutDate) {
     return false
   }
 
-  if (startDate > today) {
-    return false
-  }
-
-  const endDate = parseDateOnly(
-    assignment.endDate,
-  )
-
-  if (
-    endDate &&
-    endDate < today
-  ) {
-    return false
-  }
-
-  return true
+  return workoutDate === today
 }
 
 /*
@@ -170,12 +164,12 @@ function findTodayAssignment(
     (first, second) => {
       const firstDate =
         parseDateOnly(
-          first.startDate,
+          first.workoutDate,
         ) || ""
 
       const secondDate =
         parseDateOnly(
-          second.startDate,
+          second.workoutDate,
         ) || ""
 
       return secondDate.localeCompare(
@@ -196,6 +190,7 @@ function findTodayAssignment(
 function buildWorkoutResult(
   assignment,
   today,
+  workoutLog = null,
 ) {
   if (!assignment) {
     return {
@@ -260,13 +255,13 @@ function buildWorkoutResult(
   const workout = {
     assignmentId,
 
-    startDate:
-      assignment.startDate ||
-      assignment.workout?.startDate,
+    workoutDate:
+      assignment.workoutDate ||
+      assignment.workout?.workoutDate,
 
-    endDate:
-      assignment.endDate ||
-      assignment.workout?.endDate,
+    dayOfWeek:
+      assignment.dayOfWeek ||
+      assignment.workout?.dayOfWeek,
 
     notes:
       assignment.notes ||
@@ -276,8 +271,24 @@ function buildWorkoutResult(
     program,
   }
 
+  const completed = Boolean(
+    workoutLog?.completed,
+  )
+
+  const durationSeconds =
+    workoutLog?.durationSeconds === null ||
+    workoutLog?.durationSeconds === undefined
+      ? null
+      : Number(workoutLog.durationSeconds) || 0
+
   return {
     hasWorkout: true,
+
+    completed,
+    completedAt:
+      workoutLog?.completedAt || null,
+    durationSeconds,
+    workoutLog,
 
     date: today,
 
@@ -339,6 +350,36 @@ function buildWorkoutResult(
 
 /*
 |--------------------------------------------------------------------------
+| Get today's workout log
+|--------------------------------------------------------------------------
+*/
+
+async function getTodayWorkoutLog(today) {
+  try {
+    const response =
+      await getMyWorkoutLog({
+        date: today,
+      })
+
+    return (
+      response?.workoutLog ||
+      response?.log ||
+      null
+    )
+  } catch (error) {
+    if (error?.response?.status !== 404) {
+      console.warn(
+        "Unable to load today's workout log:",
+        error,
+      )
+    }
+
+    return null
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
 | Get today's workout
 |--------------------------------------------------------------------------
 */
@@ -378,6 +419,9 @@ async function getTodayWorkout() {
       const backendWorkout =
         response.workout
 
+      const workoutLog =
+        await getTodayWorkoutLog(today)
+
       const backendAssignment =
         response.assignment || {}
 
@@ -397,13 +441,13 @@ async function getTodayWorkout() {
         assignmentId:
           backendWorkout.assignmentId,
 
-        startDate:
-          backendAssignment.startDate ||
-          backendWorkout.startDate,
+        workoutDate:
+          backendAssignment.workoutDate ||
+          backendWorkout.workoutDate,
 
-        endDate:
-          backendAssignment.endDate ||
-          backendWorkout.endDate,
+        dayOfWeek:
+          backendAssignment.dayOfWeek ||
+          backendWorkout.dayOfWeek,
 
         notes:
           backendAssignment.notes ||
@@ -420,6 +464,7 @@ async function getTodayWorkout() {
         assignment,
         response.date ||
           today,
+        workoutLog,
       )
     }
 
@@ -467,9 +512,13 @@ async function getTodayWorkout() {
         assignment,
       )
 
+      const workoutLog =
+        await getTodayWorkoutLog(today)
+
       return buildWorkoutResult(
         assignment,
         today,
+        workoutLog,
       )
     }
 

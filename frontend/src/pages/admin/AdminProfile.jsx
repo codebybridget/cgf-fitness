@@ -661,7 +661,7 @@ function AdminProfile() {
                     profile.email
                   }
                   readOnly
-                  className="w-full cursor-not-allowed rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-sm text-gray-500 outline-none"
+                  className="w-full cursor-not-allowed rounded-xl border border-white/5 bg -white/[0.03] px-4 py-3 text-sm text-gray-500 outline-none"
                 />
 
                 <p className="mt-2 text-[11px] text-gray-700">
@@ -719,7 +719,7 @@ function AdminProfile() {
                   type="text"
                   value="Administrator"
                   readOnly
-                  className="w-full cursor-not-allowed rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-sm font-bold text-lime-400 outline-none"
+                  className="w-full cursor-not-allowed rounded-xl border border-white/5 bg -white/[0.03] px-4 py-3 text-sm font-bold text-lime-400 outline-none"
                 />
 
               </div>

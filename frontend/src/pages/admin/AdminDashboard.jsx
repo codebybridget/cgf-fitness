@@ -3,6 +3,7 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  ClipboardCheck,
   Clock3,
   Dumbbell,
   RefreshCw,
@@ -138,8 +139,8 @@ function QuickAction({
       onClick={onClick}
       className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition ${
         accent
-          ? "border-lime-400/20 bg-lime-400/[0.06] hover:bg-lime-400/[0.10]"
-          : "border-white/10 bg-black hover:border-white/20 hover:bg-white/[0.03]"
+          ? "border-lime-400/20 bg -lime-400/[0.06] hover:bg -lime-400/[0.10]"
+          : "border-white/10 bg-black hover:border-white/20 hover:bg -white/[0.03]"
       }`}
     >
       <div
@@ -183,10 +184,17 @@ function AdminDashboard() {
       setLoading(true)
       setError("")
 
+      const today = new Date()
+      const date = [
+        today.getFullYear(),
+        String(today.getMonth() + 1).padStart(2, "0"),
+        String(today.getDate()).padStart(2, "0"),
+      ].join("-")
+
       const [membersResponse, progressResponse] =
         await Promise.all([
           getMembers(),
-          getAdminWorkoutProgress(),
+          getAdminWorkoutProgress({ date }),
         ])
 
       setMembers(
@@ -577,7 +585,7 @@ function AdminDashboard() {
                         </div>
                       </div>
 
-                      <div className="w-full sm:max-w-[190px]">
+                      <div className="w-full sm:max-w- [190px]">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <span className="text-[10px] text-gray-600">
                             {percent}% complete
@@ -652,6 +660,15 @@ function AdminDashboard() {
                 description="Create and maintain your exercise library."
                 onClick={() =>
                   navigate("/admin/workouts")
+                }
+              />
+
+              <QuickAction
+                icon={ClipboardCheck}
+                title="Attendance"
+                description="View member attendance, yearly records and gift eligibility."
+                onClick={() =>
+                  navigate("/admin/attendance")
                 }
               />
 
@@ -740,7 +757,7 @@ function AdminDashboard() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-lime-400/15 bg-lime-400/[0.025] p-5 sm:p-6">
+          <div className="rounded-3xl border border-lime-400/15 bg -lime-400/[0.025] p-5 sm:p-6">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lime-400 text-black">
                 <CheckCircle2 size={19} />

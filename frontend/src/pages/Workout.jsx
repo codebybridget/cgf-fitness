@@ -6,6 +6,7 @@ import {
   Dumbbell,
   Flame,
   Play,
+  Pause,
 } from "lucide-react"
 
 import {
@@ -77,6 +78,16 @@ function Workout() {
     routeState.date ||
     null
 
+  // Preserve the saved duration when opening a completed workout from Home.
+  // This is a display fallback if the /workout-logs/me response omits the
+  // custom timer fields from the Mongoose document.
+  const navigationDurationSeconds =
+    routeState.durationSeconds ??
+    stateWorkout?.durationSeconds ??
+    (queryParams.has("durationSeconds")
+      ? Number(queryParams.get("durationSeconds"))
+      : null)
+
   const [assignment, setAssignment] =
     useState(null)
 
@@ -105,6 +116,48 @@ function Workout() {
     caloriesBurned,
     setCaloriesBurned,
   ] = useState(0)
+
+  const [
+    workoutStartedAt,
+    setWorkoutStartedAt,
+  ] = useState(null)
+
+  const [
+    workoutPausedAt,
+    setWorkoutPausedAt,
+  ] = useState(null)
+
+  const [
+    totalPausedSeconds,
+    setTotalPausedSeconds,
+  ] = useState(0)
+
+  const [
+    workoutDurationSeconds,
+    setWorkoutDurationSeconds,
+  ] = useState(
+    navigationDurationSeconds !== null &&
+      navigationDurationSeconds !== undefined &&
+      Number.isFinite(Number(navigationDurationSeconds))
+      ? Number(navigationDurationSeconds)
+      : null,
+  )
+
+  const [
+    workoutTimerSeconds,
+    setWorkoutTimerSeconds,
+  ] = useState(
+    navigationDurationSeconds !== null &&
+      navigationDurationSeconds !== undefined &&
+      Number.isFinite(Number(navigationDurationSeconds))
+      ? Number(navigationDurationSeconds)
+      : 0,
+  )
+
+  const [
+    timerAction,
+    setTimerAction,
+  ] = useState("")
 
   const [
     savingSet,
@@ -165,6 +218,11 @@ function Workout() {
               setActualValues,
               setWorkoutCompleted,
               setCaloriesBurned,
+              setWorkoutStartedAt,
+              setWorkoutPausedAt,
+              setTotalPausedSeconds,
+              setWorkoutDurationSeconds,
+              navigationDurationSeconds,
             )
 
             return
@@ -258,6 +316,7 @@ function Workout() {
           */
 
           if (
+            !selectedAssignment &&
             requestedDate &&
             assignments.length > 0
           ) {
@@ -341,6 +400,11 @@ function Workout() {
             setActualValues,
             setWorkoutCompleted,
             setCaloriesBurned,
+            setWorkoutStartedAt,
+            setWorkoutPausedAt,
+            setTotalPausedSeconds,
+            setWorkoutDurationSeconds,
+            navigationDurationSeconds,
           )
         } catch (error) {
           console.error(
@@ -371,6 +435,7 @@ function Workout() {
     assignmentId,
     requestedDate,
     stateWorkout,
+    navigationDurationSeconds,
   ])
 
   /*
@@ -505,26 +570,52 @@ function Workout() {
         if (
           currentlyCompleted
         ) {
-          await api.post(
-            "/workout-logs/set/uncomplete",
-            {
-              exerciseId,
-              setNumber,
+          const response =
+            await api.post(
+              "/workout-logs/set/uncomplete",
+              {
+                exerciseId,
+                setNumber,
 
-              workoutDate:
-                requestedDate ||
-                getWorkoutDate(
-                  assignment,
-                ),
-            },
-          )
+                workoutDate:
+                  getWorkoutDate(
+                    assignment,
+                  ),
+              },
+            )
 
-          setCompletedSets(
-            (current) => ({
-              ...current,
-              [key]: false,
-            }),
-          )
+          const updatedLog =
+            response?.data
+              ?.workoutLog ||
+            response?.data?.log
+
+          if (updatedLog) {
+            restoreWorkoutLog(
+              updatedLog,
+              setCompletedSets,
+              setActualValues,
+            )
+
+            setWorkoutCompleted(
+              Boolean(
+                updatedLog.completed,
+              ),
+            )
+
+            setCaloriesBurned(
+              Number(
+                updatedLog.caloriesBurned ||
+                  0,
+              ),
+            )
+          } else {
+            setCompletedSets(
+              (current) => ({
+                ...current,
+                [key]: false,
+              }),
+            )
+          }
 
           return
         }
@@ -535,43 +626,70 @@ function Workout() {
         |--------------------------------------------------------------------------
         */
 
-        await api.post(
-          "/workout-logs/set/complete",
-          {
-            exerciseId,
+        const response =
+          await api.post(
+            "/workout-logs/set/complete",
+            {
+              exerciseId,
 
-            setNumber,
+              setNumber,
 
-            actualReps:
-              repsValue === "" ||
-              repsValue ===
-                undefined ||
-              repsValue === null
-                ? null
-                : Number(
-                    repsValue,
-                  ),
+              actualReps:
+                repsValue === "" ||
+                repsValue ===
+                  undefined ||
+                repsValue === null
+                  ? null
+                  : Number(
+                      repsValue,
+                    ),
 
-            actualWeight:
-              weightValue ||
-              getTargetWeight(
-                exercise,
-              ),
+              actualWeight:
+                weightValue ||
+                getTargetWeight(
+                  exercise,
+                ),
 
-            workoutDate:
-              requestedDate ||
-              getWorkoutDate(
-                assignment,
-              ),
-          },
-        )
+              workoutDate:
+                getWorkoutDate(
+                  assignment,
+                ),
+            },
+          )
 
-        setCompletedSets(
-          (current) => ({
-            ...current,
-            [key]: true,
-          }),
-        )
+        const updatedLog =
+          response?.data
+            ?.workoutLog ||
+          response?.data?.log
+
+        if (updatedLog) {
+          restoreWorkoutLog(
+            updatedLog,
+            setCompletedSets,
+            setActualValues,
+          )
+
+          setWorkoutCompleted(
+            Boolean(
+              updatedLog.completed,
+            ),
+          )
+
+          setCaloriesBurned(
+            Number(
+              updatedLog.caloriesBurned ||
+                0,
+            ),
+          )
+        } else {
+          setCompletedSets(
+            (current) => ({
+              ...current,
+              [key]: true,
+            }),
+          )
+        }
+
       } catch (error) {
         console.error(
           "Unable to update set:",
@@ -587,6 +705,131 @@ function Workout() {
         setSavingSet("")
       }
     }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Workout timer
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    const calculateElapsed = () => {
+      if (!workoutStartedAt) {
+        return 0
+      }
+
+      if (workoutDurationSeconds !== null && workoutCompleted) {
+        return Math.max(0, Number(workoutDurationSeconds) || 0)
+      }
+
+      const started = new Date(workoutStartedAt).getTime()
+      if (!Number.isFinite(started)) {
+        return 0
+      }
+
+      const reference = workoutPausedAt
+        ? new Date(workoutPausedAt).getTime()
+        : Date.now()
+
+      if (!Number.isFinite(reference)) {
+        return 0
+      }
+
+      const pausedSeconds = Number(totalPausedSeconds || 0)
+      const currentPauseSeconds = workoutPausedAt
+        ? Math.max(
+            0,
+            Math.round(
+              (Date.now() - new Date(workoutPausedAt).getTime()) / 1000,
+            ),
+          )
+        : 0
+
+      return Math.max(
+        0,
+        Math.round(
+          (reference - started) / 1000 -
+            pausedSeconds,
+        ),
+      )
+    }
+
+    setWorkoutTimerSeconds(calculateElapsed())
+
+    if (
+      !workoutStartedAt ||
+      workoutPausedAt ||
+      workoutCompleted
+    ) {
+      return undefined
+    }
+
+    const interval = window.setInterval(() => {
+      setWorkoutTimerSeconds(calculateElapsed())
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [
+    workoutStartedAt,
+    workoutPausedAt,
+    totalPausedSeconds,
+    workoutDurationSeconds,
+    workoutCompleted,
+  ])
+
+  const handleTimerAction = async (action) => {
+    if (!assignment || timerAction) {
+      return
+    }
+
+    setTimerAction(action)
+    setError("")
+
+    try {
+      const response = await api.post(
+        "/workout-logs/complete",
+        {
+          action,
+          assignmentId:
+            assignment._id || assignment.id,
+          programId:
+            program?._id || program?.id,
+          workoutDate:
+            getWorkoutDate(assignment),
+        },
+      )
+
+      const log =
+        response?.data?.workoutLog ||
+        response?.data?.log
+
+      if (log) {
+        applyWorkoutTimerState(
+          log,
+          setWorkoutStartedAt,
+          setWorkoutPausedAt,
+          setTotalPausedSeconds,
+          setWorkoutDurationSeconds,
+          setWorkoutTimerSeconds,
+        )
+      }
+    } catch (error) {
+      console.error(
+        `Unable to ${action} workout:`,
+        error,
+      )
+
+      setError(
+        error?.response?.data?.message ||
+          `Unable to ${action} workout.`,
+      )
+    } finally {
+      setTimerAction("")
+    }
+  }
+
+  const formattedWorkoutDuration =
+    formatDuration(workoutTimerSeconds)
 
   /*
   |--------------------------------------------------------------------------
@@ -629,6 +872,14 @@ function Workout() {
         return
       }
 
+      if (!workoutStartedAt) {
+        setError(
+          "Start the workout before finishing it.",
+        )
+
+        return
+      }
+
       if (
         totalSets > 0 &&
         completedSetCount <
@@ -661,7 +912,6 @@ function Workout() {
                 program?.id,
 
               workoutDate:
-                requestedDate ||
                 getWorkoutDate(
                   assignment,
                 ),
@@ -672,6 +922,36 @@ function Workout() {
           response?.data
             ?.workoutLog ||
           response?.data?.log
+
+        const completedDurationSeconds =
+          response?.data?.durationSeconds ??
+          completedLog?.durationSeconds ??
+          null
+
+        const completedTimerLog = {
+          ...(completedLog || {}),
+          startedAt:
+            completedLog?.startedAt ??
+            response?.data?.startedAt ??
+            workoutStartedAt ??
+            null,
+          pausedAt: null,
+          totalPausedSeconds:
+            completedLog?.totalPausedSeconds ??
+            response?.data?.totalPausedSeconds ??
+            totalPausedSeconds,
+          durationSeconds:
+            completedDurationSeconds,
+        }
+
+        applyWorkoutTimerState(
+          completedTimerLog,
+          setWorkoutStartedAt,
+          setWorkoutPausedAt,
+          setTotalPausedSeconds,
+          setWorkoutDurationSeconds,
+          setWorkoutTimerSeconds,
+        )
 
         const calculatedCalories =
           Number(
@@ -980,6 +1260,78 @@ function Workout() {
         )}
 
         {/* ---------------------------------------------------------------- */}
+        {/* Workout timer */}
+        {/* ---------------------------------------------------------------- */}
+
+        {!workoutCompleted && (
+        <section className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">
+                Workout Timer
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {workoutCompleted
+                  ? "Completed"
+                  : workoutPausedAt
+                    ? "Paused"
+                    : workoutStartedAt
+                      ? "In progress"
+                      : "Ready to start"}
+              </p>
+            </div>
+
+            <div className="text-right">
+              <p className="font-mono text-3xl font-black tracking-tight">
+                {formattedWorkoutDuration}
+              </p>
+              {totalPausedSeconds > 0 && (
+                <p className="mt-1 text-[10px] text-gray-600">
+                  Paused: {formatDuration(totalPausedSeconds)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {!workoutCompleted && (
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {!workoutStartedAt ? (
+                <button
+                  type="button"
+                  disabled={Boolean(timerAction)}
+                  onClick={() => handleTimerAction("start")}
+                  className="col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-lime-400 px-4 py-3 text-sm font-black text-black transition hover:bg-lime-300 disabled:opacity-50"
+                >
+                  <Play size={17} fill="currentColor" />
+                  {timerAction === "start" ? "STARTING..." : "START WORKOUT"}
+                </button>
+              ) : workoutPausedAt ? (
+                <button
+                  type="button"
+                  disabled={Boolean(timerAction)}
+                  onClick={() => handleTimerAction("resume")}
+                  className="col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-lime-400 px-4 py-3 text-sm font-black text-black transition hover:bg-lime-300 disabled:opacity-50"
+                >
+                  <Play size={17} fill="currentColor" />
+                  {timerAction === "resume" ? "RESUMING..." : "RESUME WORKOUT"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={Boolean(timerAction)}
+                  onClick={() => handleTimerAction("pause")}
+                  className="col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-black transition hover:bg-gray-200 disabled:opacity-50"
+                >
+                  <Pause size={17} fill="currentColor" />
+                  {timerAction === "pause" ? "PAUSING..." : "PAUSE WORKOUT"}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+        )}
+
+        {/* ---------------------------------------------------------------- */}
         {/* Exercises */}
         {/* ---------------------------------------------------------------- */}
 
@@ -1040,7 +1392,7 @@ function Workout() {
                   >
                     {/* Exercise visual */}
 
-                    <div className="aspect-video bg-white/10">
+                    <div className="w-full overflow-hidden bg-black">
                       {exercise?.image ||
                       exercise?.imageUrl ? (
                         <img
@@ -1054,10 +1406,10 @@ function Workout() {
                               index + 1
                             }`
                           }
-                          className="h-full w-full object-cover"
+                          className="block h-auto max-h-[500px] w-full object-contain object-center"
                         />
                       ) : (
-                        <div className="flex h-full items-center justify-center">
+                        <div className="flex min-h-[220px] items-center justify-center">
                           <div className="text-center">
                             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-yellow-400 text-black">
                               <Play
@@ -1145,6 +1497,56 @@ function Workout() {
                           }
                         />
                       </div>
+
+                      {/* Exercise progress */}
+
+                      {(() => {
+                        const exerciseSetCount =
+                          Array.from({
+                            length: sets,
+                          }).filter((_, setIndex) =>
+                            Boolean(
+                              completedSets[
+                                `${exerciseId}-${setIndex + 1}`
+                              ],
+                            ),
+                          ).length
+
+                        const exerciseCompleted =
+                          sets > 0 &&
+                          exerciseSetCount >= sets
+
+                        return (
+                          <div
+                            className={`mt-4 flex items-center justify-between rounded-2xl px-4 py-3 ${
+                              exerciseCompleted
+                                ? "bg-lime-400/10"
+                                : "bg-black"
+                            }`}
+                          >
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">
+                                Exercise Progress
+                              </p>
+                              <p className="mt-1 text-xs font-bold text-gray-400">
+                                {exerciseSetCount} / {sets} sets completed
+                              </p>
+                            </div>
+
+                            <span
+                              className={`rounded-full px-3 py-1 text-[9px] font-black ${
+                                exerciseCompleted
+                                  ? "bg-lime-400 text-black"
+                                  : "bg-white/10 text-gray-500"
+                              }`}
+                            >
+                              {exerciseCompleted
+                                ? "COMPLETED"
+                                : "IN PROGRESS"}
+                            </span>
+                          </div>
+                        )
+                      })()}
 
                       {/* Trainer notes */}
 
@@ -1433,6 +1835,7 @@ function Workout() {
               type="button"
               disabled={
                 completingWorkout ||
+                !workoutStartedAt ||
                 completedSetCount <
                   totalSets
               }
@@ -1649,13 +2052,10 @@ function extractAssignment(
           response.workout
             .program,
 
-        startDate:
+        workoutDate:
           response.workout
-            .startDate,
-
-        endDate:
-          response.workout
-            .endDate,
+            .workoutDate ||
+          response.workout.date,
 
         notes:
           response.workout
@@ -1706,11 +2106,9 @@ function extractAssignment(
       program:
         workout.program,
 
-      startDate:
-        workout.startDate,
-
-      endDate:
-        workout.endDate,
+      workoutDate:
+        workout.workoutDate ||
+        workout.date,
 
       notes:
         workout.notes,
@@ -1810,13 +2208,15 @@ function normalizeWorkoutAssignment(
         value.workout
           .program,
 
-      startDate:
+      workoutDate:
         value.workout
-          .startDate,
+          .workoutDate ||
+        value.workout.date,
 
-      endDate:
-        value.workout
-          .endDate,
+      durationSeconds:
+        value.durationSeconds ??
+        value.workout.durationSeconds ??
+        null,
 
       notes:
         value.workout
@@ -1843,6 +2243,11 @@ async function restoreExistingLog(
   setActualValues,
   setWorkoutCompleted,
   setCaloriesBurned,
+  setWorkoutStartedAt,
+  setWorkoutPausedAt,
+  setTotalPausedSeconds,
+  setWorkoutDurationSeconds,
+  fallbackDurationSeconds = null,
 ) {
   if (!assignment) {
     return
@@ -1895,6 +2300,48 @@ async function restoreExistingLog(
         log.caloriesBurned ||
           0,
       ),
+    )
+
+    const persistedDuration =
+      log?.durationSeconds !== null &&
+      log?.durationSeconds !== undefined
+        ? Number(log.durationSeconds)
+        : null
+
+    const assignmentDuration =
+      assignment?.durationSeconds !== null &&
+      assignment?.durationSeconds !== undefined
+        ? Number(assignment.durationSeconds)
+        : null
+
+    const fallbackDuration =
+      fallbackDurationSeconds !== null &&
+      fallbackDurationSeconds !== undefined &&
+      Number.isFinite(Number(fallbackDurationSeconds))
+        ? Number(fallbackDurationSeconds)
+        : null
+
+    const timerLog =
+      log?.completed &&
+      persistedDuration === null &&
+      (assignmentDuration !== null ||
+        fallbackDuration !== null)
+        ? {
+            ...log,
+            durationSeconds:
+              assignmentDuration !== null
+                ? assignmentDuration
+                : fallbackDuration,
+          }
+        : log
+
+    applyWorkoutTimerState(
+      timerLog,
+      setWorkoutStartedAt,
+      setWorkoutPausedAt,
+      setTotalPausedSeconds,
+      setWorkoutDurationSeconds,
+      setWorkoutTimerSeconds,
     )
   } catch (error) {
     /*
@@ -1961,13 +2408,13 @@ function getTargetWeight(
 function getWorkoutDate(
   assignment,
 ) {
-  return (
+  const rawDate =
     assignment?.workoutDate ||
-    assignment?.date ||
-    assignment?.startDate ||
-    new Date()
-      .toISOString()
-      .split("T")[0]
+    assignment?.date
+
+  return (
+    normalizeDateKey(rawDate) ||
+    normalizeDateKey(new Date())
   )
 }
 
@@ -1981,196 +2428,46 @@ function findAssignmentForDate(
   assignments,
   requestedDate,
 ) {
-  const target =
-    startOfDay(
-      new Date(
-        requestedDate,
-      ),
-    )
+  const target = normalizeDateKey(requestedDate)
 
-  if (
-    Number.isNaN(
-      target.getTime(),
-    )
-  ) {
+  if (!target) {
     return null
   }
 
-  const matching =
-    assignments.filter(
-      (assignment) => {
-        if (!assignment) {
-          return false
-        }
-
-        if (
-          assignment.status &&
-          assignment.status !==
-            "active"
-        ) {
-          return false
-        }
-
-        const startDate =
-          assignment.startDate
-            ? startOfDay(
-                new Date(
-                  assignment.startDate,
-                ),
-              )
-            : null
-
-        const endDate =
-          assignment.endDate
-            ? startOfDay(
-                new Date(
-                  assignment.endDate,
-                ),
-              )
-            : null
-
-        if (
-          !startDate ||
-          Number.isNaN(
-            startDate.getTime(),
-          )
-        ) {
-          return false
-        }
-
-        if (
-          startDate > target
-        ) {
-          return false
-        }
-
-        if (
-          endDate &&
-          endDate < target
-        ) {
-          return false
-        }
-
-        return true
-      },
-    )
+  const matching = assignments.filter((assignment) => {
+    if (!assignment) return false
+    if (assignment.status && assignment.status !== "active") return false
+    return normalizeDateKey(assignment.workoutDate || assignment.date) === target
+  })
 
   matching.sort(
-    (
-      first,
-      second,
-    ) =>
-      new Date(
-        second.startDate,
-      ).getTime() -
-      new Date(
-        first.startDate,
-      ).getTime(),
+    (first, second) =>
+      new Date(second.createdAt || 0).getTime() -
+      new Date(first.createdAt || 0).getTime(),
   )
 
-  return (
-    matching[0] ||
-    null
-  )
+  return matching[0] || null
 }
 
 /*
-|--------------------------------------------------------------------------
-| Find current assignment
-|--------------------------------------------------------------------------
+  |--------------------------------------------------------------------------
+  | Find current assignment
+  |--------------------------------------------------------------------------
 */
 
 function findCurrentAssignment(
   assignments,
 ) {
-  const now =
-    startOfDay(
-      new Date(),
-    )
-
-  const active =
-    assignments.filter(
-      (assignment) => {
-        if (!assignment) {
-          return false
-        }
-
-        if (
-          assignment.status &&
-          assignment.status !==
-            "active"
-        ) {
-          return false
-        }
-
-        const startDate =
-          assignment.startDate
-            ? startOfDay(
-                new Date(
-                  assignment.startDate,
-                ),
-              )
-            : null
-
-        const endDate =
-          assignment.endDate
-            ? startOfDay(
-                new Date(
-                  assignment.endDate,
-                ),
-              )
-            : null
-
-        if (
-          !startDate ||
-          Number.isNaN(
-            startDate.getTime(),
-          )
-        ) {
-          return false
-        }
-
-        if (
-          startDate > now
-        ) {
-          return false
-        }
-
-        if (
-          endDate &&
-          endDate < now
-        ) {
-          return false
-        }
-
-        return true
-      },
-    )
-
-  active.sort(
-    (
-      first,
-      second,
-    ) =>
-      new Date(
-        second.startDate,
-      ).getTime() -
-      new Date(
-        first.startDate,
-      ).getTime(),
-  )
-
-  return (
-    active[0] ||
-    assignments[0] ||
-    null
+  return findAssignmentForDate(
+    assignments,
+    normalizeDateKey(new Date()),
   )
 }
 
 /*
-|--------------------------------------------------------------------------
-| Restore workout log
-|--------------------------------------------------------------------------
+  |--------------------------------------------------------------------------
+  | Restore workout log
+  |--------------------------------------------------------------------------
 */
 
 function restoreWorkoutLog(
@@ -2252,6 +2549,89 @@ function restoreWorkoutLog(
 
 /*
 |--------------------------------------------------------------------------
+| Workout timer helpers
+|--------------------------------------------------------------------------
+*/
+
+function applyWorkoutTimerState(
+  log,
+  setStartedAt,
+  setPausedAt,
+  setPausedSeconds,
+  setDurationSeconds,
+  setTimerSeconds,
+) {
+  const startedAt = log?.startedAt || null
+  const pausedAt = log?.pausedAt || null
+  const pausedSeconds = Number(
+    log?.totalPausedSeconds || 0,
+  )
+  // A duration is final only after the workout has been completed.
+  // Some existing WorkoutLog documents may contain durationSeconds: 0
+  // as a schema/default value while the workout is still in progress.
+  // That must NOT stop the live timer.
+  const duration =
+    log?.completed &&
+    log?.durationSeconds !== null &&
+    log?.durationSeconds !== undefined
+      ? Number(log.durationSeconds) || 0
+      : null
+
+  setStartedAt(startedAt)
+  setPausedAt(pausedAt)
+  setPausedSeconds(pausedSeconds)
+  setDurationSeconds(duration)
+
+  if (duration !== null) {
+    setTimerSeconds(duration)
+    return
+  }
+
+  if (!startedAt) {
+    setTimerSeconds(0)
+    return
+  }
+
+  const started = new Date(startedAt).getTime()
+  const reference = pausedAt
+    ? new Date(pausedAt).getTime()
+    : Date.now()
+
+  if (!Number.isFinite(started) || !Number.isFinite(reference)) {
+    setTimerSeconds(0)
+    return
+  }
+
+  setTimerSeconds(
+    Math.max(
+      0,
+      Math.round(
+        (reference - started) / 1000 -
+          pausedSeconds,
+      ),
+    ),
+  )
+}
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(
+    0,
+    Number(totalSeconds) || 0,
+  )
+
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainingSeconds = seconds % 60
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+}
+
+/*
+|--------------------------------------------------------------------------
 | Calories
 |--------------------------------------------------------------------------
 */
@@ -2295,6 +2675,49 @@ function calculateCalories(
 | Date helper
 |--------------------------------------------------------------------------
 */
+
+function normalizeDateKey(value) {
+  if (!value) return ""
+
+  /*
+  |--------------------------------------------------------------------------
+  | Preserve exact calendar dates.
+  |
+  | MongoDB Date values are commonly serialized as:
+  | "YYYY-MM-DDT00:00:00.000Z".
+  |
+  | For workout assignments we need the calendar date itself, not an
+  | ISO timestamp, so extract the date portion when possible.
+  |--------------------------------------------------------------------------
+  */
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed
+    }
+
+    const isoDateMatch =
+      trimmed.match(/^(\d{4}-\d{2}-\d{2})T/)
+
+    if (isoDateMatch) {
+      return isoDateMatch[1]
+    }
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-")
+}
 
 function startOfDay(
   date,

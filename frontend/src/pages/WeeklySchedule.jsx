@@ -577,13 +577,13 @@ function WorkoutDetails({
       : ""
 
   const workoutDate =
-    workout.targetDate
+    assignment?.workoutDate
       ? formatDate(
-          workout.targetDate,
+          assignment.workoutDate,
         )
-      : assignment?.startDate
+      : workout.targetDate
         ? formatDate(
-            assignment.startDate,
+            workout.targetDate,
           )
         : getDateForDay(
             workout.day,
@@ -1033,7 +1033,7 @@ function handleStartWorkout(
 
   const workoutDate =
     workout?.targetDate ||
-    assignment?.startDate
+    assignment?.workoutDate
 
   const params =
     new URLSearchParams()
@@ -1070,9 +1070,7 @@ function findAssignmentForDate(
   targetDate,
 ) {
   if (
-    !Array.isArray(
-      assignments,
-    )
+    !Array.isArray(assignments)
   ) {
     return null
   }
@@ -1081,8 +1079,12 @@ function findAssignmentForDate(
     return null
   }
 
-  const target =
-    startOfDay(targetDate)
+  const targetKey =
+    formatDateForQuery(targetDate)
+
+  if (!targetKey) {
+    return null
+  }
 
   const matchingAssignments =
     assignments.filter(
@@ -1093,71 +1095,24 @@ function findAssignmentForDate(
 
         if (
           assignment.status &&
-          assignment.status !==
-            "active"
+          assignment.status !== "active"
         ) {
           return false
         }
 
-        const assignmentDay =
-          assignment.dayOfWeek ||
-          assignment.workoutDay
-
-        if (
-          assignmentDay &&
-          assignmentDay.toLowerCase() !==
-            getDayName(target).toLowerCase()
-        ) {
-          return false
-        }
-
-        const startDate =
-          parseDateOnly(
-            assignment.startDate,
+        const workoutDateKey =
+          formatDateForQuery(
+            assignment.workoutDate,
           )
 
-        if (!startDate) {
+        if (!workoutDateKey) {
           return false
         }
 
-        const endDate =
-          parseDateOnly(
-            assignment.endDate,
-          )
-
-        const start =
-          startOfDay(
-            startDate,
-          )
-
-        /*
-        |--------------------------------------------------------------------------
-        | Assignment has not started yet
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-          start > target
-        ) {
-          return false
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Assignment has already ended
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-          endDate &&
-          startOfDay(
-            endDate,
-          ) < target
-        ) {
-          return false
-        }
-
-        return true
+        return (
+          workoutDateKey ===
+          targetKey
+        )
       },
     )
 
@@ -1170,8 +1125,8 @@ function findAssignmentForDate(
 
   /*
   |--------------------------------------------------------------------------
-  | If multiple active assignments exist,
-  | use the newest one.
+  | If duplicate active assignments exist for the same date,
+  | use the newest assignment.
   |--------------------------------------------------------------------------
   */
 
@@ -1180,19 +1135,19 @@ function findAssignmentForDate(
       first,
       second,
     ) => {
-      const firstDate =
+      const firstCreated =
         new Date(
-          first.startDate,
+          first.createdAt || 0,
         ).getTime()
 
-      const secondDate =
+      const secondCreated =
         new Date(
-          second.startDate,
+          second.createdAt || 0,
         ).getTime()
 
       return (
-        secondDate -
-        firstDate
+        secondCreated -
+        firstCreated
       )
     },
   )
@@ -1421,12 +1376,22 @@ function getDateForDay(
 function formatDate(
   value,
 ) {
-  const date =
-    parseDateOnly(value)
+  const dateKey =
+    formatDateForQuery(value)
 
-  if (!date) {
+  if (!dateKey) {
     return ""
   }
+
+  const [year, month, day] =
+    dateKey.split("-").map(Number)
+
+  const date =
+    new Date(
+      year,
+      month - 1,
+      day,
+    )
 
   return date.toLocaleDateString(
     "en-US",
@@ -1441,24 +1406,79 @@ function formatDate(
 function formatDateForQuery(
   value,
 ) {
-  const date =
-    parseDateOnly(value)
+  if (!value) {
+    return ""
+  }
 
-  if (!date) {
+  /*
+  |--------------------------------------------------------------------------
+  | IMPORTANT: workoutDate is a calendar date, not a timezone-dependent
+  | moment in time. MongoDB serializes Date values as ISO timestamps.
+  | Always preserve the YYYY-MM-DD calendar portion instead of converting
+  | the stored UTC timestamp through the browser's local timezone.
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    typeof value === "string"
+  ) {
+    const match =
+      value.match(
+        /^(\d{4}-\d{2}-\d{2})/,
+      )
+
+    if (match) {
+      return match[1]
+    }
+  }
+
+  if (value instanceof Date) {
+    if (
+      Number.isNaN(
+        value.getTime(),
+      )
+    ) {
+      return ""
+    }
+
+    const year =
+      value.getUTCFullYear()
+
+    const month =
+      String(
+        value.getUTCMonth() + 1,
+      ).padStart(2, "0")
+
+    const day =
+      String(
+        value.getUTCDate(),
+      ).padStart(2, "0")
+
+    return `${year}-${month}-${day}`
+  }
+
+  const date =
+    new Date(value)
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return ""
   }
 
   const year =
-    date.getFullYear()
+    date.getUTCFullYear()
 
   const month =
     String(
-      date.getMonth() + 1,
+      date.getUTCMonth() + 1,
     ).padStart(2, "0")
 
   const day =
     String(
-      date.getDate(),
+      date.getUTCDate(),
     ).padStart(2, "0")
 
   return `${year}-${month}-${day}`

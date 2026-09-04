@@ -31,6 +31,8 @@ const EMPTY_FORM = {
   description: "",
   instructions: "",
   equipment: "",
+  targetGender: ["Male", "Female"],
+  fitnessGoals: ["Keep Fit"],
   difficulty: "Beginner",
   defaultSets: 3,
   defaultReps: "",
@@ -105,6 +107,20 @@ function exerciseToForm(
           )
         : "",
 
+    targetGender:
+      Array.isArray(
+        exercise.targetGender,
+      ) && exercise.targetGender.length
+        ? exercise.targetGender
+        : ["Male", "Female"],
+
+    fitnessGoals:
+      Array.isArray(
+        exercise.fitnessGoals,
+      )
+        ? exercise.fitnessGoals
+        : [],
+
     difficulty:
       exercise.difficulty ||
       "Beginner",
@@ -162,6 +178,16 @@ function buildPayload(
       normalizeArray(
         form.equipment,
       ),
+
+    targetGender:
+      Array.isArray(form.targetGender)
+        ? form.targetGender
+        : [],
+
+    fitnessGoals:
+      Array.isArray(form.fitnessGoals)
+        ? form.fitnessGoals
+        : [],
 
     difficulty:
       form.difficulty,
@@ -667,6 +693,32 @@ export default function Exercises() {
 
   /*
   |--------------------------------------------------------------------------
+  | Toggle recommendation option
+  |--------------------------------------------------------------------------
+  */
+
+  const handleArrayToggle =
+    (field, value) => {
+      setForm((current) => {
+        const currentValues = Array.isArray(
+          current[field],
+        )
+          ? current[field]
+          : []
+
+        return {
+          ...current,
+          [field]: currentValues.includes(value)
+            ? currentValues.filter(
+                (item) => item !== value,
+              )
+            : [...currentValues, value],
+        }
+      })
+    }
+
+  /*
+  |--------------------------------------------------------------------------
   | Image selection
   |--------------------------------------------------------------------------
   */
@@ -864,6 +916,20 @@ export default function Exercises() {
         formData.append(
           "muscleGroup",
           payload.muscleGroup,
+        )
+
+        formData.append(
+          "targetGender",
+          JSON.stringify(
+            payload.targetGender,
+          ),
+        )
+
+        formData.append(
+          "fitnessGoals",
+          JSON.stringify(
+            payload.fitnessGoals,
+          ),
         )
 
         formData.append(
@@ -1200,7 +1266,7 @@ export default function Exercises() {
         {/* FILTERS                                                          */}
         {/* ================================================================ */}
 
-        <div className="mt-6 grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-4">
+        <div className="mt-6 grid gap-3 rounded-2xl border border-white/10 bg white/[0.03] p-4 md:grid-cols-4">
 
           <input
             type="text"
@@ -1306,12 +1372,12 @@ export default function Exercises() {
         <div className="mt-6">
 
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-10 text-center text-sm text-slate-400">
+            <div className="rounded-2xl border border-white/10 bg- white/[0.03] p-10 text-center text-sm text-slate-400">
               Loading exercises...
             </div>
           ) : filteredExercises.length ===
             0 ? (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-10 text-center">
+            <div className="rounded-2xl border border-dashed border-white/10 bg- white/[0.03] p-10 text-center">
 
               <h2 className="text-lg font-bold text-white">
                 No exercises found
@@ -1345,7 +1411,7 @@ export default function Exercises() {
                     key={
                       exercise._id
                     }
-                    className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+                    className="overflow-hidden rounded-2xl border border-white/10 bg -white/[0.03]"
                   >
 
                     {/* ---------------------------------------------------- */}
@@ -1568,7 +1634,7 @@ export default function Exercises() {
               {/* BASIC INFORMATION                                           */}
               {/* ========================================================== */}
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="rounded-2xl border border-white/10 bg- white/[0.02] p-5">
 
                 <div className="mb-5">
 
@@ -1710,6 +1776,75 @@ export default function Exercises() {
 
                   </div>
 
+                  {/* Target Gender */}
+
+                  <div>
+
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Target Gender
+                    </label>
+
+                    <div className="space-y-2 rounded-xl border border-white/10 bg-slate-900 p-3">
+                      {["Male", "Female"].map((gender) => (
+                        <label
+                          key={gender}
+                          className="flex cursor-pointer items-center gap-3 text-sm text-slate-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={form.targetGender.includes(gender)}
+                            onChange={() =>
+                              handleArrayToggle(
+                                "targetGender",
+                                gender,
+                              )
+                            }
+                            className="h-4 w-4 rounded border-white/20 bg-slate-800 text-yellow-400 focus:ring-yellow-400"
+                          />
+                          {gender}
+                        </label>
+                      ))}
+                    </div>
+
+                  </div>
+
+                  {/* Fitness Goals */}
+
+                  <div>
+
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Fitness Goals
+                    </label>
+
+                    <div className="space-y-2 rounded-xl border border-white/10 bg-slate-900 p-3">
+                      {[
+                        "Keep Fit",
+                        "Lose Weight",
+                        "Gain Weight",
+                        "Train to Become a Trainer",
+                      ].map((goal) => (
+                        <label
+                          key={goal}
+                          className="flex cursor-pointer items-center gap-3 text-sm text-slate-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={form.fitnessGoals.includes(goal)}
+                            onChange={() =>
+                              handleArrayToggle(
+                                "fitnessGoals",
+                                goal,
+                              )
+                            }
+                            className="h-4 w-4 rounded border-white/20 bg-slate-800 text-yellow-400 focus:ring-yellow-400"
+                          />
+                          {goal}
+                        </label>
+                      ))}
+                    </div>
+
+                  </div>
+
                   {/* Sets */}
 
                   <div>
@@ -1838,7 +1973,7 @@ export default function Exercises() {
               {/* DESCRIPTION                                                 */}
               {/* ========================================================== */}
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
 
                 <label className="mb-2 block text-sm font-medium text-slate-300">
                   Description
@@ -1863,7 +1998,7 @@ export default function Exercises() {
               {/* INSTRUCTIONS                                                */}
               {/* ========================================================== */}
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
 
                 <label className="mb-2 block text-sm font-medium text-slate-300">
                   Exercise Instructions
@@ -1893,7 +2028,7 @@ export default function Exercises() {
               {/* EQUIPMENT                                                   */}
               {/* ========================================================== */}
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
 
                 <label className="mb-2 block text-sm font-medium text-slate-300">
                   Equipment
@@ -1922,7 +2057,7 @@ export default function Exercises() {
               {/* DEMONSTRATION MEDIA                                         */}
               {/* ========================================================== */}
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
 
                 <div className="mb-5">
 

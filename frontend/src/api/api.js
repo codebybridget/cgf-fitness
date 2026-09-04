@@ -110,6 +110,14 @@ export function buildMediaUrl(
   return `${BACKEND_BASE_URL}/${value}`
 }
 
+export const getMyWorkoutHistory = async () => {
+  const response = await api.get(
+    "/workout-logs/me/history",
+  )
+
+  return response.data
+}
+
 /*
 |--------------------------------------------------------------------------
 | Attach authentication token
@@ -952,6 +960,33 @@ export const updateExerciseWithMedia =
     formData.append(
       "muscleGroup",
       data.muscleGroup || "",
+    )
+
+    formData.append(
+      "secondaryMuscles",
+      JSON.stringify(
+        Array.isArray(data.secondaryMuscles)
+          ? data.secondaryMuscles
+          : [],
+      ),
+    )
+
+    formData.append(
+      "targetGender",
+      JSON.stringify(
+        Array.isArray(data.targetGender)
+          ? data.targetGender
+          : ["Male", "Female"],
+      ),
+    )
+
+    formData.append(
+      "fitnessGoals",
+      JSON.stringify(
+        Array.isArray(data.fitnessGoals)
+          ? data.fitnessGoals
+          : [],
+      ),
     )
 
     formData.append(

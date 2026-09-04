@@ -128,9 +128,16 @@ function StatusBadge({ status }) {
 }
 
 function Progress() {
-  const [date, setDate] = useState(
-    new Date().toISOString().split("T")[0],
-  )
+  const today = new Date()
+
+  const localToday =
+    `${today.getFullYear()}-${String(
+      today.getMonth() + 1,
+    ).padStart(2, "0")}-${String(
+      today.getDate(),
+    ).padStart(2, "0")}`
+
+  const [date, setDate] = useState(localToday)
   const [status, setStatus] = useState("")
   const [search, setSearch] = useState("")
   const [members, setMembers] = useState([])
@@ -255,6 +262,14 @@ function Progress() {
 
       const response = await getAdminMemberWorkoutProgress(id, {
         date,
+        assignmentId:
+          item?.assignment?.id ||
+          item?.assignment?._id ||
+          "",
+        programId:
+          item?.program?._id ||
+          item?.program?.id ||
+          "",
       })
 
       setSelectedMember(response?.progress?.[0] || response || item)
@@ -474,7 +489,7 @@ function Progress() {
                       index
                     }
                     onClick={() => openMember(item)}
-                    className="flex w-full flex-col gap-4 px-5 py-5 text-left transition hover:bg-white/[0.03] lg:flex-row lg:items-center"
+                    className="flex w-full flex-col gap-4 px-5 py-5 text-left transition hover:bg white/[0.03] lg:flex-row lg:items-center"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-yellow-400 text-xs font-black text-black">

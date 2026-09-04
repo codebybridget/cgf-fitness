@@ -5,7 +5,6 @@ import {
   Dumbbell,
   Loader2,
   Search,
-  Trash2,
   UserCheck,
   Users,
 } from "lucide-react"
@@ -15,6 +14,8 @@ import {
   useMemo,
   useState,
 } from "react"
+
+import { useNavigate } from "react-router-dom"
 
 import {
   cancelProgramAssignment,
@@ -99,6 +100,7 @@ const workoutTypes = [
 ]
 
 function Assignments() {
+  const navigate = useNavigate()
   const [members, setMembers] =
     useState([])
 
@@ -120,15 +122,8 @@ function Assignments() {
   const [workoutType, setWorkoutType] =
     useState("")
 
-  const [startDate, setStartDate] =
-    useState(
-      new Date()
-        .toISOString()
-        .split("T")[0],
-    )
-
-  const [endDate, setEndDate] =
-    useState("")
+  const [workoutDate, setWorkoutDate] =
+    useState(getLocalDateKey())
 
   const [notes, setNotes] =
     useState("")
@@ -431,21 +426,9 @@ function Assignments() {
       return
     }
 
-    if (!startDate) {
+    if (!workoutDate) {
       setError(
-        "Please select a start date.",
-      )
-
-      return
-    }
-
-    if (
-      endDate &&
-      new Date(endDate) <
-        new Date(startDate)
-    ) {
-      setError(
-        "End date cannot be before start date.",
+        "Please select a workout date.",
       )
 
       return
@@ -463,10 +446,7 @@ function Assignments() {
             programId:
               selectedProgramId,
 
-            startDate,
-
-            endDate:
-              endDate || null,
+            workoutDate,
 
             notes:
               notes.trim(),
@@ -495,7 +475,7 @@ function Assignments() {
       setSelectedMemberId("")
       setSelectedProgramId("")
       setNotes("")
-      setEndDate("")
+      setWorkoutDate(getLocalDateKey())
     } catch (err) {
       console.error(
         "Assignment error:",
@@ -983,22 +963,25 @@ function Assignments() {
               </div>
             )}
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-5">
               <DateField
-                label="Start Date"
-                value={startDate}
+                label="Workout Date"
+                value={workoutDate}
                 onChange={
-                  setStartDate
+                  setWorkoutDate
                 }
               />
 
-              <DateField
-                label="End Date"
-                value={endDate}
-                onChange={
-                  setEndDate
-                }
-              />
+              {workoutDate && (
+                <div className="mt-3 rounded-2xl border border-lime-400/20 bg-lime-400/5 px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">
+                    Scheduled Workout Day
+                  </p>
+                  <p className="mt-1 text-sm font-black text-lime-400">
+                    {formatDayAndDate(workoutDate)}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="mt-4">
@@ -1055,6 +1038,7 @@ function Assignments() {
           assignments={
             assignments
           }
+          navigate={navigate}
           deletingId={
             deletingId
           }
@@ -1094,9 +1078,43 @@ function DateField({
 
 function AssignmentHistory({
   assignments,
-  deletingId,
-  onDelete,
+  navigate,
 }) {
+  const groupedMembers = assignments.reduce(
+    (groups, assignment) => {
+      const member = assignment?.member
+      const memberId = member?._id || member?.id
+
+      if (!memberId) return groups
+
+      const key = String(memberId)
+
+      if (!groups[key]) {
+        groups[key] = {
+          member,
+          assignments: [],
+        }
+      }
+
+      groups[key].assignments.push(assignment)
+      return groups
+    },
+    {},
+  )
+
+  const memberGroups = Object.values(groupedMembers).sort(
+    (a, b) => {
+      const nameA = `${a.member?.firstName || ""} ${a.member?.lastName || ""}`
+        .trim()
+        .toLowerCase()
+      const nameB = `${b.member?.firstName || ""} ${b.member?.lastName || ""}`
+        .trim()
+        .toLowerCase()
+
+      return nameA.localeCompare(nameB)
+    },
+  )
+
   return (
     <section className="mt-8">
       <div className="flex items-center gap-2">
@@ -1111,13 +1129,12 @@ function AssignmentHistory({
           </p>
 
           <h2 className="mt-1 text-xl font-black">
-            Active Assignments
+            Members & Weekly Workouts
           </h2>
         </div>
       </div>
 
-      {assignments.length ===
-      0 ? (
+      {memberGroups.length === 0 ? (
         <div className="mt-5 rounded-3xl border border-dashed border-white/10 p-8 text-center">
           <Users
             size={28}
@@ -1129,100 +1146,107 @@ function AssignmentHistory({
           </p>
         </div>
       ) : (
-        <div className="mt-5 space-y-3">
-          {assignments.map(
-            (assignment) => {
-              const member =
-                assignment.member
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {memberGroups.map(({ member, assignments: memberAssignments }) => {
+            const memberId = member?._id || member?.id
+            const memberName =
+              member?.fullName ||
+              `${member?.firstName || ""} ${member?.lastName || ""}`.trim() ||
+              "Member"
 
-              const program =
-                assignment.program
+            const sortedAssignments = [...memberAssignments].sort((a, b) => {
+              return String(a?.workoutDate || "").localeCompare(
+                String(b?.workoutDate || ""),
+              )
+            })
 
-              const memberName =
-                member
-                  ? `${member.firstName || ""} ${member.lastName || ""}`.trim()
-                  : "Member"
+            return (
+              <button
+                key={memberId}
+                type="button"
+                onClick={() =>
+                  navigate(`/admin/assignments/member/${memberId}`)
+                }
+                className="group rounded-3xl border border-white/10 bg-white/5 p-5 text-left transition hover:border-lime-400/30 hover:bg-white/[0.07]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-yellow-400 text-sm font-black text-black">
+                      {memberName
+                        .split(" ")
+                        .filter(Boolean)
+                        .map((part) => part[0] || "")
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </div>
 
-              const isDeleting =
-                String(
-                  deletingId,
-                ) ===
-                String(
-                  assignment._id,
-                )
-
-              return (
-                <div
-                  key={
-                    assignment._id
-                  }
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-black">
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-black text-white group-hover:text-lime-400">
                         {memberName}
                       </p>
-
-                      <p className="mt-1 text-xs text-gray-500">
-                        {program
-                          ?.name ||
-                          "Program"}
+                      <p className="mt-1 truncate text-xs text-gray-600">
+                        {member?.email || "Member"}
                       </p>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-lime-400/10 px-3 py-1 text-[9px] font-black uppercase text-lime-400">
-                        {
-                          assignment.status
-                        }
-                      </span>
-
-                      <span className="rounded-full bg-white/5 px-3 py-1 text-[9px] font-black text-gray-600">
-                        {formatDate(
-                          assignment.startDate,
-                        )}
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onDelete(
-                            assignment,
-                          )
-                        }
-                        disabled={
-                          isDeleting
-                        }
-                        className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-[9px] font-black uppercase text-red-400 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isDeleting ? (
-                          <Loader2
-                            size={13}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <Trash2
-                            size={13}
-                          />
-                        )}
-
-                        {isDeleting
-                          ? "Deleting..."
-                          : "Delete"}
-                      </button>
-                    </div>
                   </div>
+
+                  <ChevronDown
+                    size={18}
+                    className="mt-1 shrink-0 -rotate-90 text-gray-700 transition group-hover:text-lime-400"
+                  />
                 </div>
-              )
-            },
-          )}
+
+                <div className="mt-5 flex items-center justify-between border-t border-white/5 pt-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">
+                      Assigned workouts
+                    </p>
+                    <p className="mt-1 text-lg font-black">
+                      {memberAssignments.length}
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-lime-400/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-lime-400">
+                    View 7-day schedule
+                  </span>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {sortedAssignments.slice(0, 3).map((assignment) => (
+                    <div
+                      key={assignment._id}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-black px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-bold text-gray-300">
+                          {assignment.program?.name || "Workout Program"}
+                        </p>
+                        <p className="mt-1 text-[9px] text-gray-600">
+                          {formatDayAndDate(assignment.workoutDate)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[9px] font-black uppercase text-gray-600">
+                        {assignment.program?.workoutType || "Training"}
+                      </span>
+                    </div>
+                  ))}
+
+                  {memberAssignments.length > 3 ? (
+                    <p className="pt-1 text-center text-[9px] font-bold text-gray-700">
+                      + {memberAssignments.length - 3} more workout
+                      {memberAssignments.length - 3 === 1 ? "" : "s"}
+                    </p>
+                  ) : null}
+                </div>
+              </button>
+            )
+          })}
         </div>
       )}
     </section>
   )
 }
-
 function EmptyState({
   icon,
   text,
@@ -1240,6 +1264,87 @@ function EmptyState({
   )
 }
 
+function getLocalDateKey() {
+  const now = new Date()
+
+  const year = now.getFullYear()
+  const month = String(
+    now.getMonth() + 1,
+  ).padStart(2, "0")
+  const day = String(
+    now.getDate(),
+  ).padStart(2, "0")
+
+  return `${year}-${month}-${day}`
+}
+
+function parseCalendarDate(value) {
+  if (!value) {
+    return null
+  }
+
+  const valueString = String(value)
+
+  // IMPORTANT:
+  // YYYY-MM-DD is a calendar date, not a UTC timestamp.
+  // Construct it with local date components so the browser timezone
+  // cannot shift it to the previous day.
+  const match =
+    valueString.match(
+      /^(\d{4})-(\d{2})-(\d{2})/,
+    )
+
+  if (match) {
+    const year = Number(match[1])
+    const month = Number(match[2])
+    const day = Number(match[3])
+
+    const date = new Date(
+      year,
+      month - 1,
+      day,
+    )
+
+    if (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    ) {
+      return date
+    }
+  }
+
+  const date = new Date(valueString)
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date
+}
+
+function formatDayAndDate(
+  value,
+) {
+  if (!value) {
+    return "No date"
+  }
+
+  const date = parseCalendarDate(value)
+
+  if (!date) {
+    return String(value)
+  }
+
+  return date.toLocaleDateString(
+    undefined,
+    {
+      weekday: "long",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    },
+  )
+}
+
 function formatDate(
   value,
 ) {
@@ -1247,14 +1352,9 @@ function formatDate(
     return "No date"
   }
 
-  const date =
-    new Date(value)
+  const date = parseCalendarDate(value)
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (!date) {
     return value
   }
 

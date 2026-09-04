@@ -40,7 +40,32 @@ const normalizeArray = (
   if (
     typeof value === "string"
   ) {
-    return value
+    const trimmedValue = value.trim()
+
+    // FormData sends array fields as JSON strings.
+    // Parse them before falling back to separator-based values.
+    if (
+      trimmedValue.startsWith("[") &&
+      trimmedValue.endsWith("]")
+    ) {
+      try {
+        const parsed = JSON.parse(
+          trimmedValue,
+        )
+
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) =>
+              String(item).trim(),
+            )
+            .filter(Boolean)
+        }
+      } catch {
+        // Fall through to normal separator handling.
+      }
+    }
+
+    return trimmedValue
       .split(separator)
       .map((item) =>
         item.trim(),

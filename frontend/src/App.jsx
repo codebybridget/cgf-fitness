@@ -4,6 +4,8 @@ import {
   Routes,
   Outlet,
   useLocation,
+  useNavigate,
+  useParams,
 } from "react-router-dom"
 
 import Home from "./pages/Home"
@@ -28,9 +30,12 @@ import Members from "./pages/admin/Members"
 import Workouts from "./pages/admin/Workouts"
 import ProgramBuilder from "./pages/admin/ProgramBuilder"
 import Assignments from "./pages/admin/Assignments"
+import MemberAssignments from "./pages/admin/MemberAssignments"
 import WeeklyScheduleAdmin from "./pages/admin/WeeklySchedule"
 import Exercises from "./pages/admin/Exercises"
 import Membership from "./pages/Membership"
+import Attendance from "./pages/Attendance"
+import AdminAttendance from "./pages/admin/Attendance"
 import { useAuth } from "./context/AuthContext.jsx"
 /*
 |--------------------------------------------------------------------------
@@ -250,6 +255,18 @@ function PublicEntry() {
   )
 }
 
+function MemberAssignmentsRoute() {
+  const navigate = useNavigate()
+  const { memberId } = useParams()
+
+  return (
+    <MemberAssignments
+      memberId={memberId}
+      onBack={() => navigate("/admin/assignments")}
+    />
+  )
+}
+
 /*
 |--------------------------------------------------------------------------
 | Application Routes
@@ -341,6 +358,13 @@ function App() {
           path="/weekly-schedule"
           element={
             <WeeklySchedule />
+          }
+        />
+
+        <Route
+          path="/attendance"
+          element={
+            <Attendance />
           }
         />
 
@@ -460,6 +484,21 @@ function App() {
               <Progress />
             }
           />
+
+          <Route
+            path="attendance"
+            element={
+              <AdminAttendance />
+            }
+          />
+
+          <Route
+            path="assignments/member/:memberId"
+            element={
+              <MemberAssignmentsRoute />
+            }
+          />
+
            {/* Admin Profile */}
 
 <Route

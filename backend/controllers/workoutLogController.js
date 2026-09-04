@@ -10,43 +10,59 @@ import User from "../models/User.js"
 */
 
 const getStartOfDay = (date) => {
-  const result = new Date(date)
+  const source = new Date(date)
 
-  result.setHours(
-    0,
-    0,
-    0,
-    0,
+  return new Date(
+    Date.UTC(
+      source.getUTCFullYear(),
+      source.getUTCMonth(),
+      source.getUTCDate(),
+    ),
   )
-
-  return result
 }
 
 const getEndOfDay = (date) => {
-  const result = new Date(date)
+  const start = getStartOfDay(date)
 
-  result.setHours(
-    23,
-    59,
-    59,
-    999,
+  return new Date(
+    start.getTime() +
+      24 * 60 * 60 * 1000 -
+      1,
   )
-
-  return result
 }
 
-const parseWorkoutDate = (
-  value,
-) => {
-  const date = value
-    ? new Date(value)
-    : new Date()
+const parseWorkoutDate = (value) => {
+  if (!value) return null
 
-  if (
-    Number.isNaN(
-      date.getTime(),
+  // The application uses calendar dates (YYYY-MM-DD), not date ranges.
+  // Parse an explicit YYYY-MM-DD as UTC midnight so the same calendar
+  // date is used consistently by the API, MongoDB, and frontend.
+  if (typeof value === "string") {
+    const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (!match) return null
+
+    const year = Number(match[1])
+    const month = Number(match[2])
+    const day = Number(match[3])
+
+    const date = new Date(
+      Date.UTC(year, month - 1, day),
     )
-  ) {
+
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      return null
+    }
+
+    return date
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
     return null
   }
 
@@ -65,39 +81,30 @@ const getAssignmentForDate =
     workoutDate,
   ) => {
     const startOfDay =
-      getStartOfDay(
-        workoutDate,
+      new Date(
+        Date.UTC(
+          workoutDate.getUTCFullYear(),
+          workoutDate.getUTCMonth(),
+          workoutDate.getUTCDate(),
+        ),
       )
 
-    const endOfDay =
-      getEndOfDay(
-        workoutDate,
+    const nextDay =
+      new Date(
+        startOfDay.getTime() +
+          24 * 60 * 60 * 1000,
       )
 
-    return ProgramAssignment.findOne(
-      {
-        member: memberId,
-
-        status: "active",
-
-        startDate: {
-          $lte: endOfDay,
-        },
-
-        $or: [
-          {
-            endDate: null,
-          },
-          {
-            endDate: {
-              $gte: startOfDay,
-            },
-          },
-        ],
+    return ProgramAssignment.findOne({
+      member: memberId,
+      status: "active",
+      workoutDate: {
+        $gte: startOfDay,
+        $lt: nextDay,
       },
-    )
+    })
       .sort({
-        startDate: -1,
+        createdAt: -1,
       })
       .populate({
         path: "program",
@@ -249,6 +256,400 @@ const calculateCaloriesBurned =
 
 /*
 |--------------------------------------------------------------------------
+| WORKOUT TIMER HELPERS
+|--------------------------------------------------------------------------
+*/
+
+const TIMER_FIELDS = [
+  "startedAt",
+  "pausedAt",
+  "totalPausedSeconds",
+  "durationSeconds",
+]
+
+const getTimerState = (workoutLog) => ({
+  startedAt: workoutLog?.startedAt || null,
+  pausedAt: workoutLog?.pausedAt || null,
+  totalPausedSeconds:
+    Number(workoutLog?.totalPausedSeconds || 0),
+  durationSeconds:
+    workoutLog?.durationSeconds === null ||
+    workoutLog?.durationSeconds === undefined
+      ? null
+      : Number(workoutLog.durationSeconds),
+})
+
+const calculateDurationSeconds = (
+  startedAt,
+  pausedAt,
+  totalPausedSeconds,
+  endAt,
+) => {
+  if (!startedAt) return 0
+
+  const start = new Date(startedAt).getTime()
+  const end = new Date(endAt || Date.now()).getTime()
+  const paused = Number(totalPausedSeconds || 0) * 1000
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0
+  }
+
+  const currentPause = pausedAt
+    ? Math.max(
+        0,
+        end - new Date(pausedAt).getTime(),
+      )
+    : 0
+
+  return Math.max(
+    0,
+    Math.round((end - start - paused - currentPause) / 1000),
+  )
+}
+
+const updateTimerFields = async (
+  workoutLog,
+  fields,
+) => {
+  const values = {}
+
+  TIMER_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(fields, field)) {
+      values[field] = fields[field]
+    }
+  })
+
+  if (Object.keys(values).length) {
+    const result = await WorkoutLog.collection.updateOne(
+      { _id: workoutLog._id },
+      { $set: values },
+    )
+
+    if (!result.acknowledged) {
+      throw new Error("Workout timer update was not acknowledged by MongoDB.")
+    }
+
+    const persisted = await readPersistedTimerState(workoutLog)
+    Object.assign(workoutLog, persisted)
+  }
+
+  return workoutLog
+}
+
+const readPersistedTimerState = async (workoutLog) => {
+  if (!workoutLog?._id) {
+    return {
+      startedAt: null,
+      pausedAt: null,
+      totalPausedSeconds: 0,
+      durationSeconds: null,
+    }
+  }
+
+  const rawLog = await WorkoutLog.collection.findOne(
+    { _id: workoutLog._id },
+    {
+      projection: {
+        startedAt: 1,
+        pausedAt: 1,
+        totalPausedSeconds: 1,
+        durationSeconds: 1,
+      },
+    },
+  )
+
+  return {
+    startedAt: rawLog?.startedAt ?? null,
+    pausedAt: rawLog?.pausedAt ?? null,
+    totalPausedSeconds: Number(rawLog?.totalPausedSeconds ?? 0),
+    durationSeconds:
+      rawLog?.durationSeconds === undefined || rawLog?.durationSeconds === null
+        ? null
+        : Number(rawLog.durationSeconds),
+  }
+}
+
+const attachPersistedTimerFields = async (workoutLog) => {
+  const timer = await readPersistedTimerState(workoutLog)
+  Object.assign(workoutLog, timer)
+  return workoutLog
+}
+
+
+const findWorkoutLogForAssignment = async (
+  memberId,
+  programId,
+  workoutDate,
+) => {
+  const start = new Date(
+    Date.UTC(
+      workoutDate.getUTCFullYear(),
+      workoutDate.getUTCMonth(),
+      workoutDate.getUTCDate(),
+    ),
+  )
+  const next = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+
+  return WorkoutLog.findOne({
+    member: memberId,
+    program: programId,
+    workoutDate: { $gte: start, $lt: next },
+  })
+}
+
+const resolveWorkoutTimerContext = async (req, res) => {
+  const requestedDate =
+    req.body?.date || req.body?.workoutDate
+
+  const workoutDate = parseWorkoutDate(requestedDate)
+
+  if (!workoutDate) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid workout date.",
+    })
+    return null
+  }
+
+  const assignment = await getAssignmentForDate(
+    req.user._id,
+    workoutDate,
+  )
+
+  if (!assignment) {
+    res.status(404).json({
+      success: false,
+      message: "No active workout assignment found for this date.",
+    })
+    return null
+  }
+
+  if (!assignment.program) {
+    res.status(404).json({
+      success: false,
+      message: "The assigned program could not be found.",
+    })
+    return null
+  }
+
+  let workoutLog = await findWorkoutLogForAssignment(
+    req.user._id,
+    assignment.program._id,
+    workoutDate,
+  )
+
+  if (!workoutLog) {
+    workoutLog = await getOrCreateWorkoutLog(
+      req.user._id,
+      assignment.program._id,
+      workoutDate,
+    )
+  }
+
+  await attachPersistedTimerFields(
+    workoutLog,
+  )
+
+  return { workoutDate, assignment, workoutLog }
+}
+
+/*
+|--------------------------------------------------------------------------
+| START WORKOUT
+|--------------------------------------------------------------------------
+*/
+
+const startWorkout = async (req, res) => {
+  try {
+    const context = await resolveWorkoutTimerContext(req, res)
+    if (!context) return
+
+    const { workoutLog } = context
+
+    await attachPersistedTimerFields(
+      workoutLog,
+    )
+
+    if (workoutLog.completed) {
+      return res.status(400).json({
+        success: false,
+        message: "This workout has already been completed.",
+        workoutLog,
+      })
+    }
+
+    const timer = getTimerState(workoutLog)
+
+    if (timer.startedAt && !timer.pausedAt) {
+      return res.status(200).json({
+        success: true,
+        message: "Workout is already in progress.",
+        workoutLog,
+      })
+    }
+
+    if (timer.pausedAt) {
+      return res.status(400).json({
+        success: false,
+        message: "Workout is paused. Resume the workout instead.",
+        workoutLog,
+      })
+    }
+
+    const now = new Date()
+    const updatedLog = await updateTimerFields(workoutLog, {
+      startedAt: now,
+      pausedAt: null,
+      totalPausedSeconds: 0,
+      durationSeconds: null,
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Workout started.",
+      workoutLog: updatedLog,
+    })
+  } catch (error) {
+    console.error("Start workout error:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Unable to start workout.",
+    })
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| PAUSE WORKOUT
+|--------------------------------------------------------------------------
+*/
+
+const pauseWorkout = async (req, res) => {
+  try {
+    const context = await resolveWorkoutTimerContext(req, res)
+    if (!context) return
+
+    const { workoutLog } = context
+
+    await attachPersistedTimerFields(
+      workoutLog,
+    )
+
+    if (workoutLog.completed) {
+      return res.status(400).json({
+        success: false,
+        message: "This workout has already been completed.",
+        workoutLog,
+      })
+    }
+
+    const timer = getTimerState(workoutLog)
+
+    if (!timer.startedAt) {
+      return res.status(400).json({
+        success: false,
+        message: "Start the workout before pausing it.",
+      })
+    }
+
+    if (timer.pausedAt) {
+      return res.status(200).json({
+        success: true,
+        message: "Workout is already paused.",
+        workoutLog,
+      })
+    }
+
+    const updatedLog = await updateTimerFields(workoutLog, {
+      pausedAt: new Date(),
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Workout paused.",
+      workoutLog: updatedLog,
+    })
+  } catch (error) {
+    console.error("Pause workout error:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Unable to pause workout.",
+    })
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| RESUME WORKOUT
+|--------------------------------------------------------------------------
+*/
+
+const resumeWorkout = async (req, res) => {
+  try {
+    const context = await resolveWorkoutTimerContext(req, res)
+    if (!context) return
+
+    const { workoutLog } = context
+
+    await attachPersistedTimerFields(
+      workoutLog,
+    )
+
+    if (workoutLog.completed) {
+      return res.status(400).json({
+        success: false,
+        message: "This workout has already been completed.",
+        workoutLog,
+      })
+    }
+
+    const timer = getTimerState(workoutLog)
+
+    if (!timer.startedAt) {
+      return res.status(400).json({
+        success: false,
+        message: "Start the workout before resuming it.",
+      })
+    }
+
+    if (!timer.pausedAt) {
+      return res.status(200).json({
+        success: true,
+        message: "Workout is already running.",
+        workoutLog,
+      })
+    }
+
+    const now = new Date()
+    const pausedAt = new Date(timer.pausedAt)
+    const addedPauseSeconds = Math.max(
+      0,
+      Math.round((now.getTime() - pausedAt.getTime()) / 1000),
+    )
+
+    const updatedLog = await updateTimerFields(workoutLog, {
+      pausedAt: null,
+      totalPausedSeconds:
+        timer.totalPausedSeconds + addedPauseSeconds,
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Workout resumed.",
+      workoutLog: updatedLog,
+    })
+  } catch (error) {
+    console.error("Resume workout error:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Unable to resume workout.",
+    })
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
 | GET MY WORKOUT LOG
 |--------------------------------------------------------------------------
 */
@@ -290,6 +691,10 @@ const getMyWorkoutLog =
           workoutDate,
         )
 
+      await attachPersistedTimerFields(
+        workoutLog,
+      )
+
       await workoutLog.populate({
         path:
           "exercises.exercise",
@@ -313,11 +718,11 @@ const getMyWorkoutLog =
           program:
             assignment.program,
 
-          startDate:
-            assignment.startDate,
+          workoutDate:
+            assignment.workoutDate,
 
-          endDate:
-            assignment.endDate,
+          dayOfWeek:
+            assignment.dayOfWeek,
 
           status:
             assignment.status,
@@ -669,6 +1074,13 @@ const completeSet =
       workoutLog.completedAt =
         null
 
+      if (workoutLog.durationSeconds !== undefined) {
+        await updateTimerFields(workoutLog, {
+          pausedAt: null,
+          durationSeconds: null,
+        })
+      }
+
       workoutLog.caloriesBurned =
         await calculateCaloriesBurned(
           workoutLog,
@@ -676,7 +1088,10 @@ const completeSet =
 
       await workoutLog.save()
 
-      await workoutLog.populate({
+      const savedWorkoutLog =
+        await WorkoutLog.findById(workoutLog._id)
+
+      await savedWorkoutLog.populate({
         path:
           "exercises.exercise",
       })
@@ -801,7 +1216,7 @@ const uncompleteSet =
       |--------------------------------------------------------------------------
       */
 
-      const workoutLog =
+      let workoutLog =
         await WorkoutLog.findOne({
           member:
             req.user._id,
@@ -896,6 +1311,13 @@ const uncompleteSet =
       workoutLog.completedAt =
         null
 
+      if (workoutLog.durationSeconds !== undefined) {
+        await updateTimerFields(workoutLog, {
+          pausedAt: null,
+          durationSeconds: null,
+        })
+      }
+
       workoutLog.caloriesBurned =
         await calculateCaloriesBurned(
           workoutLog,
@@ -952,6 +1374,142 @@ const completeWorkout =
       const requestedWorkoutDate =
         date ||
         bodyWorkoutDate
+
+      /*
+      |--------------------------------------------------------------------------
+      | Timer actions use the existing /complete endpoint so no route changes
+      | are required.
+      |--------------------------------------------------------------------------
+      */
+
+      if (["start", "pause", "resume"].includes(req.body?.action)) {
+        const context = await resolveWorkoutTimerContext(req, res)
+        if (!context) return
+
+        const { workoutLog } = context
+        const action = req.body.action
+
+        const timer = await readPersistedTimerState(workoutLog)
+
+        console.log(
+          `Workout timer action: ${action}`,
+          {
+            workoutLogId: String(workoutLog._id),
+            workoutDate: context.workoutDate.toISOString().split("T")[0],
+            hasStartedAt: Boolean(timer.startedAt),
+            hasPausedAt: Boolean(timer.pausedAt),
+            totalPausedSeconds: timer.totalPausedSeconds,
+          },
+        )
+
+        if (workoutLog.completed) {
+          return res.status(400).json({
+            success: false,
+            message: "This workout has already been completed.",
+            workoutLog,
+          })
+        }
+
+        if (action === "start") {
+          if (timer.startedAt) {
+            return res.status(200).json({
+              success: true,
+              message: timer.pausedAt
+                ? "Workout is paused. Resume the workout instead."
+                : "Workout is already in progress.",
+              workoutLog,
+            })
+          }
+
+          const now = new Date()
+          const updatedLog = await updateTimerFields(workoutLog, {
+            startedAt: now,
+            pausedAt: null,
+            totalPausedSeconds: 0,
+            durationSeconds: null,
+          })
+
+          const persistedStart = await readPersistedTimerState(updatedLog)
+          if (!persistedStart.startedAt) {
+            console.error("Workout timer start was not persisted.", {
+              workoutLogId: String(workoutLog._id),
+            })
+            return res.status(500).json({
+              success: false,
+              message: "Workout timer could not be saved. Please try again.",
+            })
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: "Workout started.",
+            workoutLog: updatedLog,
+          })
+        }
+
+        if (action === "pause") {
+          if (!timer.startedAt) {
+            return res.status(400).json({
+              success: false,
+              message: "Start the workout before pausing it.",
+            })
+          }
+
+          if (timer.pausedAt) {
+            return res.status(200).json({
+              success: true,
+              message: "Workout is already paused.",
+              workoutLog,
+            })
+          }
+
+          const updatedLog = await updateTimerFields(workoutLog, {
+            pausedAt: new Date(),
+          })
+
+          return res.status(200).json({
+            success: true,
+            message: "Workout paused.",
+            workoutLog: updatedLog,
+          })
+        }
+
+        if (!timer.startedAt) {
+          return res.status(400).json({
+            success: false,
+            message: "Start the workout before resuming it.",
+          })
+        }
+
+        if (!timer.pausedAt) {
+          return res.status(200).json({
+            success: true,
+            message: "Workout is already running.",
+            workoutLog,
+          })
+        }
+
+        const now = new Date()
+        const pausedAt = new Date(timer.pausedAt)
+        const addedPauseSeconds = Math.max(
+          0,
+          Math.round(
+            (now.getTime() - pausedAt.getTime()) / 1000,
+          ),
+        )
+
+        const updatedLog = await updateTimerFields(workoutLog, {
+          pausedAt: null,
+          totalPausedSeconds:
+            timer.totalPausedSeconds + addedPauseSeconds,
+        })
+
+        return res.status(200).json({
+          success: true,
+          message: "Workout resumed.",
+          workoutLog: updatedLog,
+        })
+      }
 
       const parsedDate =
         parseWorkoutDate(
@@ -1044,7 +1602,7 @@ const completeWorkout =
       |--------------------------------------------------------------------------
       */
 
-      const workoutLog =
+      let workoutLog =
         await WorkoutLog.findOne({
           member:
             req.user._id,
@@ -1135,10 +1693,17 @@ const completeWorkout =
 
         const exerciseLog =
           workoutLog.exercises.find(
-            (item) =>
-              String(
-                item.exercise,
-              ) === exerciseId,
+            (item) => {
+              const loggedExerciseId =
+                item?.exercise?._id ||
+                item?.exercise
+
+              return (
+                String(
+                  loggedExerciseId,
+                ) === exerciseId
+              )
+            },
           )
 
         const completedSetCount =
@@ -1209,20 +1774,61 @@ const completeWorkout =
 
       /*
       |--------------------------------------------------------------------------
-      | Complete workout
+      | Complete workout and finalize timer
       |--------------------------------------------------------------------------
       */
 
-      workoutLog.completed =
-        true
+      // Timer fields are stored directly in MongoDB because they may not be
+      // declared in the current Mongoose schema. Read the persisted values
+      // before finalizing the workout so completion sees the same timer state
+      // that Start/Pause/Resume use.
+      const timer = await readPersistedTimerState(workoutLog)
 
-      workoutLog.completedAt =
-        new Date()
+      if (!timer.startedAt) {
+        return res.status(400).json({
+          success: false,
+          message: "Start the workout before finishing it.",
+        })
+      }
 
+      const completedAt = new Date()
+      let totalPausedSeconds = timer.totalPausedSeconds
+
+      if (timer.pausedAt) {
+        totalPausedSeconds += Math.max(
+          0,
+          Math.round(
+            (completedAt.getTime() -
+              new Date(timer.pausedAt).getTime()) /
+              1000,
+          ),
+        )
+      }
+
+      const durationSeconds = calculateDurationSeconds(
+        timer.startedAt,
+        null,
+        totalPausedSeconds,
+        completedAt,
+      )
+
+      workoutLog.completed = true
+      workoutLog.completedAt = completedAt
+
+      workoutLog = await updateTimerFields(workoutLog, {
+        pausedAt: null,
+        totalPausedSeconds,
+        durationSeconds,
+      })
+
+      workoutLog.completed = true
+      workoutLog.completedAt = completedAt
       workoutLog.caloriesBurned =
         caloriesBurned
 
       await workoutLog.save()
+
+      await attachPersistedTimerFields(workoutLog)
 
       await workoutLog.populate({
         path:
@@ -1269,9 +1875,7 @@ const getAdminWorkoutProgress =
       } = req.query
 
       const workoutDate =
-        parseWorkoutDate(
-          date,
-        )
+        parseWorkoutDate(date)
 
       if (!workoutDate) {
         return res.status(400).json({
@@ -1282,14 +1886,10 @@ const getAdminWorkoutProgress =
       }
 
       const startOfDay =
-        getStartOfDay(
-          workoutDate,
-        )
+        getStartOfDay(workoutDate)
 
       const endOfDay =
-        getEndOfDay(
-          workoutDate,
-        )
+        getEndOfDay(workoutDate)
 
       /*
       |--------------------------------------------------------------------------
@@ -1302,14 +1902,11 @@ const getAdminWorkoutProgress =
       }
 
       if (memberId) {
-        memberFilter._id =
-          memberId
+        memberFilter._id = memberId
       }
 
       const members =
-        await User.find(
-          memberFilter,
-        )
+        await User.find(memberFilter)
           .select(
             "firstName lastName email phone fitnessGoal weight isActive profilePhoto",
           )
@@ -1326,41 +1923,42 @@ const getAdminWorkoutProgress =
       |--------------------------------------------------------------------------
       */
 
-      for (
-        const member of members
-      ) {
-        const assignment =
-          await ProgramAssignment.findOne(
-            {
-              member:
-                member._id,
+      for (const member of members) {
+        /*
+        |--------------------------------------------------------------------------
+        | Find ALL active workout assignments for this member on this date
+        |--------------------------------------------------------------------------
+        |
+        | IMPORTANT:
+        | We use find() instead of findOne().
+        |
+        | A member can have multiple workouts on the same date, for example:
+        |   - Upper Body
+        |   - Lower Body
+        |
+        | findOne() would return only one of them.
+        |--------------------------------------------------------------------------
+        */
 
-              status: "active",
-
-              startDate: {
-                $lte: endOfDay,
-              },
-
-              $or: [
-                {
-                  endDate: null,
-                },
-                {
-                  endDate: {
-                    $gte: startOfDay,
-                  },
-                },
-              ],
+        const assignments =
+          await ProgramAssignment.find({
+            member: member._id,
+            status: "active",
+            workoutDate: {
+              $gte: startOfDay,
+              $lt: new Date(
+                startOfDay.getTime() +
+                  24 * 60 * 60 * 1000,
+              ),
             },
-          )
+          })
             .sort({
-              startDate: -1,
+              createdAt: -1,
             })
             .populate({
               path: "program",
               populate: {
-                path:
-                  "exercises.exercise",
+                path: "exercises.exercise",
               },
             })
 
@@ -1370,7 +1968,7 @@ const getAdminWorkoutProgress =
         |--------------------------------------------------------------------------
         */
 
-        if (!assignment) {
+        if (!assignments.length) {
           const item = {
             member,
 
@@ -1390,13 +1988,17 @@ const getAdminWorkoutProgress =
               caloriesBurned:
                 0,
 
-              totalSets: 0,
+              totalSets:
+                0,
 
-              completedSets: 0,
+              completedSets:
+                0,
 
-              progressPercent: 0,
+              progressPercent:
+                0,
 
-              exercises: [],
+              exercises:
+                [],
             },
           }
 
@@ -1413,195 +2015,278 @@ const getAdminWorkoutProgress =
 
         /*
         |--------------------------------------------------------------------------
-        | Find workout log
+        | PROCESS EVERY WORKOUT ASSIGNMENT
         |--------------------------------------------------------------------------
         */
-
-        const workoutLog =
-          await WorkoutLog.findOne({
-            member:
-              member._id,
-
-            program:
-              assignment.program._id,
-
-            workoutDate: {
-              $gte:
-                startOfDay,
-
-              $lte:
-                endOfDay,
-            },
-          }).populate({
-            path:
-              "exercises.exercise",
-          })
-
-        /*
-        |--------------------------------------------------------------------------
-        | Calculate set progress
-        |--------------------------------------------------------------------------
-        */
-
-        let totalSets = 0
-        let completedSets = 0
-
-        const assignedExercises =
-          assignment.program
-            ?.exercises || []
 
         for (
-          const assignedExercise of
-            assignedExercises
+          const assignment of assignments
         ) {
-          const requiredSets =
-            Number(
-              assignedExercise.sets,
-            ) || 1
+          /*
+          |--------------------------------------------------------------------------
+          | Make sure the assigned program exists
+          |--------------------------------------------------------------------------
+          */
 
-          totalSets +=
-            requiredSets
+          if (!assignment.program) {
+            continue
+          }
 
-          const assignedExerciseId =
-            assignedExercise
-              ?.exercise?._id ||
-            assignedExercise?.exercise
+          /*
+          |--------------------------------------------------------------------------
+          | Find workout log for THIS specific program
+          |--------------------------------------------------------------------------
+          */
 
-          const exerciseId =
-            String(
-              assignedExerciseId,
-            )
+          const workoutLog =
+            await WorkoutLog.findOne({
+              member:
+                member._id,
 
-          const loggedExercise =
-            workoutLog?.exercises?.find(
-              (item) =>
-                String(
-                  item.exercise,
-                ) === exerciseId,
-            )
+              program:
+                assignment.program._id,
 
-          if (loggedExercise) {
-            completedSets +=
-              loggedExercise.sets.filter(
-                (set) =>
-                  set.completed,
-              ).length
+              workoutDate: {
+                $gte:
+                  startOfDay,
+
+                $lte:
+                  endOfDay,
+              },
+            }).populate({
+              path:
+                "exercises.exercise",
+            })
+
+          /*
+          |--------------------------------------------------------------------------
+          | Calculate set progress
+          |--------------------------------------------------------------------------
+          */
+
+          let totalSets = 0
+          let completedSets = 0
+
+          const assignedExercises =
+            assignment.program
+              ?.exercises || []
+
+          /*
+          |--------------------------------------------------------------------------
+          | Loop through every exercise in this workout
+          |--------------------------------------------------------------------------
+          */
+
+          for (
+            const assignedExercise of
+              assignedExercises
+          ) {
+            const requiredSets =
+              Number(
+                assignedExercise.sets,
+              ) || 1
+
+            totalSets +=
+              requiredSets
+
+            const assignedExerciseId =
+              assignedExercise
+                ?.exercise?._id ||
+              assignedExercise?.exercise
+
+            const exerciseId =
+              String(
+                assignedExerciseId,
+              )
+
+            const loggedExercise =
+              workoutLog?.exercises?.find(
+                (item) => {
+                  const loggedExerciseId =
+                    item?.exercise?._id ||
+                    item?.exercise
+
+                  return (
+                    String(
+                      loggedExerciseId,
+                    ) === exerciseId
+                  )
+                },
+              )
+
+            if (loggedExercise) {
+              completedSets +=
+                loggedExercise.sets.filter(
+                  (set) =>
+                    set.completed,
+                ).length
+            }
+          }
+
+          /*
+          |--------------------------------------------------------------------------
+          | Determine workout status
+          |--------------------------------------------------------------------------
+          */
+
+          let workoutStatus =
+            "not_started"
+
+          if (
+            workoutLog?.completed
+          ) {
+            workoutStatus =
+              "completed"
+          } else if (
+            workoutLog?.pausedAt
+          ) {
+            workoutStatus =
+              "paused"
+          } else if (
+            workoutLog?.startedAt ||
+            completedSets > 0
+          ) {
+            workoutStatus =
+              "in_progress"
+          }
+
+          /*
+          |--------------------------------------------------------------------------
+          | Calculate progress percentage
+          |--------------------------------------------------------------------------
+          */
+
+          const progressPercent =
+            totalSets > 0
+              ? Math.min(
+                  Math.round(
+                    (completedSets /
+                      totalSets) *
+                      100,
+                  ),
+                  100,
+                )
+              : 0
+
+          /*
+          |--------------------------------------------------------------------------
+          | Build response item
+          |--------------------------------------------------------------------------
+          */
+
+          const item = {
+            member,
+
+            /*
+            |--------------------------------------------------------------------------
+            | Assignment information
+            |--------------------------------------------------------------------------
+            */
+
+            assignment: {
+              id:
+                assignment._id,
+
+              workoutDate:
+                assignment.workoutDate,
+
+              dayOfWeek:
+                assignment.dayOfWeek,
+
+              status:
+                assignment.status,
+            },
+
+            /*
+            |--------------------------------------------------------------------------
+            | Program / Workout name and exercises
+            |--------------------------------------------------------------------------
+            */
+
+            program:
+              assignment.program,
+
+            /*
+            |--------------------------------------------------------------------------
+            | Workout progress
+            |--------------------------------------------------------------------------
+            */
+
+            workout: {
+              status:
+                workoutStatus,
+
+              date:
+                workoutDate,
+
+              completed:
+                Boolean(
+                  workoutLog?.completed,
+                ),
+
+              completedAt:
+                workoutLog?.completedAt ||
+                null,
+
+              startedAt:
+                workoutLog?.startedAt ||
+                null,
+
+              pausedAt:
+                workoutLog?.pausedAt ||
+                null,
+
+              totalPausedSeconds:
+                Number(
+                  workoutLog
+                    ?.totalPausedSeconds ||
+                    0,
+                ),
+
+              durationSeconds:
+                workoutLog
+                  ?.durationSeconds ??
+                null,
+
+              caloriesBurned:
+                workoutLog
+                  ?.caloriesBurned ||
+                0,
+
+              totalSets,
+
+              completedSets,
+
+              progressPercent,
+
+              exercises:
+                workoutLog
+                  ?.exercises ||
+                [],
+            },
+          }
+
+          /*
+          |--------------------------------------------------------------------------
+          | Apply optional status filter
+          |--------------------------------------------------------------------------
+          */
+
+          if (
+            !status ||
+            status ===
+              workoutStatus
+          ) {
+            progress.push(item)
           }
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Determine status
-        |--------------------------------------------------------------------------
-        */
-
-        let workoutStatus =
-          "not_started"
-
-        if (
-          workoutLog?.completed
-        ) {
-          workoutStatus =
-            "completed"
-        } else if (
-          completedSets > 0
-        ) {
-          workoutStatus =
-            "in_progress"
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Calculate percentage
-        |--------------------------------------------------------------------------
-        */
-
-        const progressPercent =
-          totalSets > 0
-            ? Math.min(
-                Math.round(
-                  (completedSets /
-                    totalSets) *
-                    100,
-                ),
-                100,
-              )
-            : 0
-
-        /*
-        |--------------------------------------------------------------------------
-        | Build response
-        |--------------------------------------------------------------------------
-        */
-
-        const item = {
-          member,
-
-          assignment: {
-            id:
-              assignment._id,
-
-            startDate:
-              assignment.startDate,
-
-            endDate:
-              assignment.endDate,
-
-            status:
-              assignment.status,
-          },
-
-          program:
-            assignment.program,
-
-          workout: {
-            status:
-              workoutStatus,
-
-            date:
-              workoutDate,
-
-            completed:
-              Boolean(
-                workoutLog?.completed,
-              ),
-
-            completedAt:
-              workoutLog?.completedAt ||
-              null,
-
-            caloriesBurned:
-              workoutLog
-                ?.caloriesBurned ||
-              0,
-
-            totalSets,
-
-            completedSets,
-
-            progressPercent,
-
-            exercises:
-              workoutLog
-                ?.exercises ||
-              [],
-          },
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Apply optional status filter
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-          !status ||
-          status ===
-            workoutStatus
-        ) {
-          progress.push(item)
-        }
       }
+
+      /*
+      |--------------------------------------------------------------------------
+      | Return all workout progress
+      |--------------------------------------------------------------------------
+      */
 
       return res.status(200).json({
         success: true,
@@ -1670,7 +2355,6 @@ const getAdminMemberWorkoutProgress =
       const member =
         await User.findOne({
           _id: memberId,
-
           role: "member",
         }).select(
           "-password",
@@ -1679,7 +2363,6 @@ const getAdminMemberWorkoutProgress =
       if (!member) {
         return res.status(404).json({
           success: false,
-
           message:
             "Member not found.",
         })
@@ -1687,20 +2370,38 @@ const getAdminMemberWorkoutProgress =
 
       /*
       |--------------------------------------------------------------------------
-      | Find assignment
+      | Find ALL active assignments for this member/date
       |--------------------------------------------------------------------------
       */
 
-      const assignment =
-        await getAssignmentForDate(
-          memberId,
-          workoutDate,
-        )
+      const startOfDay =
+        getStartOfDay(workoutDate)
 
-      if (!assignment) {
+      const endOfDay =
+        getEndOfDay(workoutDate)
+
+      const assignments =
+        await ProgramAssignment.find({
+          member: memberId,
+          status: "active",
+          workoutDate: {
+            $gte: startOfDay,
+            $lte: endOfDay,
+          },
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .populate({
+            path: "program",
+            populate: {
+              path: "exercises.exercise",
+            },
+          })
+
+      if (!assignments.length) {
         return res.status(404).json({
           success: false,
-
           message:
             "No active program is assigned to this member for this date.",
         })
@@ -1708,120 +2409,212 @@ const getAdminMemberWorkoutProgress =
 
       /*
       |--------------------------------------------------------------------------
-      | Find workout log
+      | Build progress for every assigned workout
       |--------------------------------------------------------------------------
       */
 
-      const workoutLog =
-        await WorkoutLog.findOne({
-          member: memberId,
+      const progress = []
+
+      for (const assignment of assignments) {
+        if (!assignment.program) {
+          continue
+        }
+
+        const workoutLog =
+          await WorkoutLog.findOne({
+            member: memberId,
+            program:
+              assignment.program._id,
+            workoutDate: {
+              $gte: startOfDay,
+              $lte: endOfDay,
+            },
+          }).populate({
+            path:
+              "exercises.exercise",
+          })
+
+        let totalSets = 0
+        let completedSets = 0
+
+        for (
+          const assignedExercise of
+            assignment.program.exercises || []
+        ) {
+          const requiredSets =
+            Number(
+              assignedExercise.sets,
+            ) || 1
+
+          totalSets +=
+            requiredSets
+
+          const assignedExerciseId =
+            assignedExercise
+              ?.exercise?._id ||
+            assignedExercise?.exercise
+
+          const exerciseId =
+            String(
+              assignedExerciseId,
+            )
+
+          const loggedExercise =
+            workoutLog?.exercises?.find(
+              (item) => {
+                const loggedExerciseId =
+                  item?.exercise?._id ||
+                  item?.exercise
+
+                return (
+                  String(
+                    loggedExerciseId,
+                  ) === exerciseId
+                )
+              },
+            )
+
+          if (loggedExercise) {
+            completedSets +=
+              Array.isArray(
+                loggedExercise.sets,
+              )
+                ? loggedExercise.sets.filter(
+                    (set) =>
+                      set?.completed === true,
+                  ).length
+                : 0
+          }
+        }
+
+        const progressPercent =
+          totalSets > 0
+            ? Math.min(
+                Math.round(
+                  (completedSets /
+                    totalSets) *
+                    100,
+                ),
+                100,
+              )
+            : workoutLog?.completed
+              ? 100
+              : 0
+
+        let workoutStatus =
+          "not_started"
+
+        if (
+          workoutLog?.completed ||
+          progressPercent >= 100
+        ) {
+          workoutStatus =
+            "completed"
+        } else if (
+          workoutLog?.pausedAt
+        ) {
+          workoutStatus =
+            "paused"
+        } else if (
+          workoutLog?.startedAt ||
+          completedSets > 0
+        ) {
+          workoutStatus =
+            "in_progress"
+        }
+
+        progress.push({
+          member,
 
           program:
-            assignment.program._id,
+            assignment.program,
 
-          workoutDate: {
-            $gte:
-              getStartOfDay(
-                workoutDate,
-              ),
+          assignment: {
+            id:
+              assignment._id,
 
-            $lte:
-              getEndOfDay(
-                workoutDate,
-              ),
+            workoutDate:
+              assignment.workoutDate,
+
+            dayOfWeek:
+              assignment.dayOfWeek,
+
+            status:
+              assignment.status,
           },
-        }).populate({
-          path:
-            "exercises.exercise",
-        })
 
-      /*
-      |--------------------------------------------------------------------------
-      | Calculate progress
-      |--------------------------------------------------------------------------
-      */
+          workout: {
+            status:
+              workoutStatus,
 
-      let totalSets = 0
-      let completedSets = 0
+            date:
+              workoutDate,
 
-      for (
-        const assignedExercise of
-          assignment.program
-            .exercises || []
-      ) {
-        const requiredSets =
-          Number(
-            assignedExercise.sets,
-          ) || 1
-
-        totalSets +=
-          requiredSets
-
-        const assignedExerciseId =
-          assignedExercise
-            ?.exercise?._id ||
-          assignedExercise?.exercise
-
-        const exerciseId =
-          String(
-            assignedExerciseId,
-          )
-
-        const loggedExercise =
-          workoutLog?.exercises?.find(
-            (item) =>
-              String(
-                item.exercise,
-              ) === exerciseId,
-          )
-
-        if (loggedExercise) {
-          completedSets +=
-            loggedExercise.sets.filter(
-              (set) =>
-                set.completed,
-            ).length
-        }
-      }
-
-      /*
-      |--------------------------------------------------------------------------
-      | Determine workout status
-      |--------------------------------------------------------------------------
-      */
-
-      let workoutStatus =
-        "not_started"
-
-      if (
-        workoutLog?.completed
-      ) {
-        workoutStatus =
-          "completed"
-      } else if (
-        completedSets > 0
-      ) {
-        workoutStatus =
-          "in_progress"
-      }
-
-      /*
-      |--------------------------------------------------------------------------
-      | Progress percentage
-      |--------------------------------------------------------------------------
-      */
-
-      const progressPercent =
-        totalSets > 0
-          ? Math.min(
-              Math.round(
-                (completedSets /
-                  totalSets) *
-                  100,
+            completed:
+              Boolean(
+                workoutLog?.completed,
               ),
-              100,
-            )
-          : 0
+
+            completedAt:
+              workoutLog?.completedAt ||
+              null,
+
+            startedAt:
+              workoutLog?.startedAt ||
+              null,
+
+            pausedAt:
+              workoutLog?.pausedAt ||
+              null,
+
+            totalPausedSeconds:
+              Number(
+                workoutLog
+                  ?.totalPausedSeconds ||
+                  0,
+              ),
+
+            durationSeconds:
+              workoutLog
+                ?.durationSeconds ??
+              null,
+
+            caloriesBurned:
+              workoutLog
+                ?.caloriesBurned ||
+              0,
+
+            totalSets,
+
+            completedSets,
+
+            progressPercent,
+
+            exercises:
+              workoutLog
+                ?.exercises ||
+              [],
+          },
+        })
+      }
+
+      if (!progress.length) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "No active program is assigned to this member for this date.",
+        })
+      }
+
+      /*
+      |--------------------------------------------------------------------------
+      | Backward compatibility:
+      | Return the first workout at the top level while also returning all
+      | workouts in progress[]. This keeps the existing frontend working.
+      |--------------------------------------------------------------------------
+      */
+
+      const first = progress[0]
 
       return res.status(200).json({
         success: true,
@@ -1829,53 +2622,15 @@ const getAdminMemberWorkoutProgress =
         member,
 
         program:
-          assignment.program,
+          first.program,
 
-        assignment: {
-          id:
-            assignment._id,
+        assignment:
+          first.assignment,
 
-          startDate:
-            assignment.startDate,
+        workout:
+          first.workout,
 
-          endDate:
-            assignment.endDate,
-
-          status:
-            assignment.status,
-        },
-
-        workout: {
-          status:
-            workoutStatus,
-
-          date:
-            workoutDate,
-
-          completed:
-            Boolean(
-              workoutLog?.completed,
-            ),
-
-          completedAt:
-            workoutLog?.completedAt ||
-            null,
-
-          caloriesBurned:
-            workoutLog
-              ?.caloriesBurned ||
-            0,
-
-          totalSets,
-
-          completedSets,
-
-          progressPercent,
-
-          exercises:
-            workoutLog?.exercises ||
-            [],
-        },
+        progress,
       })
     } catch (error) {
       console.error(
@@ -1885,13 +2640,215 @@ const getAdminMemberWorkoutProgress =
 
       return res.status(500).json({
         success: false,
-
         message:
           "Unable to retrieve member workout details.",
       })
     }
   }
 
+
+  /*
+|--------------------------------------------------------------------------
+| Get member workout history
+|--------------------------------------------------------------------------
+*/
+
+const getMyWorkoutHistory = async (
+  req,
+  res,
+) => {
+  try {
+    const memberId = req.user._id
+
+    const logs =
+      await WorkoutLog.find({
+        member: memberId,
+        completed: true,
+      })
+        .sort({
+          workoutDate: -1,
+        })
+        .populate({
+          path: "program",
+          select: "name title estimatedDuration",
+        })
+        .lean()
+
+    const history = logs.map(
+      (log) => {
+        const exercises =
+          Array.isArray(
+            log.exercises,
+          )
+            ? log.exercises
+            : []
+
+        let completedSets = 0
+        let totalSets = 0
+
+        const completedSetTimes = []
+
+        exercises.forEach(
+          (exercise) => {
+            const sets =
+              Array.isArray(
+                exercise.sets,
+              )
+                ? exercise.sets
+                : []
+
+            totalSets += sets.length
+
+            sets.forEach(
+              (set) => {
+                if (set.completed) {
+                  completedSets += 1
+
+                  if (
+                    set.completedAt
+                  ) {
+                    completedSetTimes.push(
+                      new Date(
+                        set.completedAt,
+                      ),
+                    )
+                  }
+                }
+              },
+            )
+          },
+        )
+
+        let durationSeconds =
+          log.durationSeconds !== undefined &&
+          log.durationSeconds !== null
+            ? Number(log.durationSeconds) || 0
+            : 0
+
+        if (
+          log.durationSeconds === undefined ||
+          log.durationSeconds === null
+        ) {
+          if (
+            completedSetTimes.length >=
+          2
+        ) {
+          const timestamps =
+            completedSetTimes.map(
+              (date) =>
+                date.getTime(),
+            )
+
+          const firstTimestamp =
+            Math.min(
+              ...timestamps,
+            )
+
+          const lastTimestamp =
+            Math.max(
+              ...timestamps,
+            )
+
+          durationSeconds =
+            Math.max(
+              0,
+              Math.round(
+                (
+                  lastTimestamp -
+                  firstTimestamp
+                ) / 1000,
+              ),
+            )
+          }
+        }
+
+        const workoutDate =
+          new Date(
+            log.workoutDate,
+          )
+
+        const date =
+          workoutDate
+            .toISOString()
+            .split("T")[0]
+
+        const day =
+          workoutDate.toLocaleDateString(
+            "en-US",
+            {
+              weekday: "long",
+            },
+          )
+
+        const programName =
+          log.program?.name ||
+          log.program?.title ||
+          "Workout"
+
+        return {
+          id: String(
+            log._id,
+          ),
+
+          date,
+
+          day,
+
+          programName,
+
+          completed: Boolean(
+            log.completed,
+          ),
+
+          completedAt:
+            log.completedAt ||
+            null,
+
+          caloriesBurned:
+            Number(
+              log.caloriesBurned,
+            ) || 0,
+
+          completedSets,
+
+          totalSets,
+
+          completionPercentage:
+            totalSets > 0
+              ? Math.min(
+                  Math.round(
+                    (
+                      completedSets /
+                      totalSets
+                    ) * 100,
+                  ),
+                  100,
+                )
+              : 100,
+
+          durationSeconds,
+        }
+      },
+    )
+
+    return res.status(200).json({
+      success: true,
+      count: history.length,
+      history,
+    })
+  } catch (error) {
+    console.error(
+      "Get member workout history error:",
+      error,
+    )
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to retrieve workout history.",
+    })
+  }
+}
 /*
 |--------------------------------------------------------------------------
 | EXPORTS
@@ -1900,9 +2857,13 @@ const getAdminMemberWorkoutProgress =
 
 export {
   getMyWorkoutLog,
+  getMyWorkoutHistory,
   completeSet,
   uncompleteSet,
   completeWorkout,
   getAdminWorkoutProgress,
   getAdminMemberWorkoutProgress,
+  startWorkout,
+  pauseWorkout,
+  resumeWorkout,
 }

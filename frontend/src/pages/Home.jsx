@@ -6,6 +6,7 @@ import {
 import {
   ArrowRight,
   CalendarDays,
+  ClipboardCheck,
   Flame,
   Loader2,
   UserRound,
@@ -98,9 +99,43 @@ function Home() {
           result,
         )
 
-        setTodayWorkout(
-          result,
-        )
+        // Home must only display a workout assigned to today's exact calendar date.
+        // This prevents a future assignment (for example Thursday) from appearing
+        // on Home when today is Wednesday.
+        const now = new Date()
+        const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+        const resultDate = String(
+          result?.date ||
+          result?.workout?.workoutDate ||
+          result?.assignment?.workoutDate ||
+          "",
+        ).slice(0, 10)
+
+        if (result?.hasWorkout && resultDate !== todayKey) {
+          console.warn(
+            "Ignoring non-today workout on Home:",
+            { resultDate, todayKey },
+          )
+
+          setTodayWorkout({
+            hasWorkout: false,
+            date: todayKey,
+            day: now.toLocaleDateString("en-US", { weekday: "long" }),
+            workout: null,
+            workoutType: "rest",
+            title: "Rest Day",
+            description: "No workout has been assigned for today.",
+            startTime: "",
+            endTime: "",
+            location: "CGF Gym",
+            duration: "",
+            trainerAssigned: false,
+          })
+        } else {
+          setTodayWorkout(
+            result,
+          )
+        }
       } catch (error) {
         console.error(
           "Unable to load today's workout:",
@@ -313,6 +348,9 @@ function Home() {
 
             program:
               todayWorkout.program,
+
+            durationSeconds:
+              todayWorkout.durationSeconds,
           },
         },
       )
@@ -419,6 +457,11 @@ function Home() {
               TRY AGAIN
             </button>
           </section>
+        ) : todayWorkout?.completed ? (
+          <CompletedTodayWorkoutCard
+            workout={todayWorkout}
+            onView={handleStartWorkout}
+          />
         ) : (
           <TodayWorkoutCard
             workout={
@@ -483,6 +526,33 @@ function Home() {
             <p className="mt-1 text-xs text-gray-600">
               Workouts completed
             </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                "/attendance",
+              )
+            }
+            className="col-span-2 rounded-3xl border border-white/10 bg-white/5 p-5 text-left transition hover:border-lime-400/30"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-black">
+                <ClipboardCheck size={18} />
+              </div>
+
+              <div>
+                <p className="text-sm font-black text-white">
+                  Attendance
+                </p>
+                <p className="mt-1 text-xs text-gray-600">
+                  View your yearly attendance and gift eligibility.
+                </p>
+              </div>
+
+              <ArrowRight size={16} className="ml-auto text-gray-600" />
+            </div>
           </button>
         </section>
 
@@ -575,6 +645,66 @@ function Home() {
 
       <BottomNavigation />
     </div>
+  )
+}
+
+function formatWorkoutDuration(totalSeconds) {
+  const seconds = Math.max(
+    0,
+    Number(totalSeconds) || 0,
+  )
+
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainingSeconds = seconds % 60
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+}
+
+function CompletedTodayWorkoutCard({
+  workout,
+  onView,
+}) {
+  return (
+    <section className="rounded-3xl border border-lime-400/30 bg-lime-400/10 p-5">
+      <span className="inline-flex items-center rounded-full bg-lime-400 px-3 py-1 text-[9px] font-black text-black">
+        WORKOUT COMPLETED
+      </span>
+
+      <h2 className="mt-3 text-2xl font-black">
+        {workout?.title || "Today's Workout"}
+      </h2>
+
+      <p className="mt-2 text-sm leading-6 text-gray-400">
+        You completed today's workout. Great work.
+      </p>
+
+      {workout?.durationSeconds !== null &&
+        workout?.durationSeconds !== undefined && (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[9px] font-black uppercase tracking-wider text-gray-500">
+              Actual workout time
+            </p>
+            <p className="mt-1 text-xl font-black text-white">
+              {formatWorkoutDuration(
+                workout.durationSeconds,
+              )}
+            </p>
+          </div>
+        )}
+
+      <button
+        type="button"
+        onClick={onView}
+        className="mt-5 flex w-full items-center justify-center rounded-2xl bg-white px-5 py-3 text-xs font-black text-black transition hover:bg-gray-200"
+      >
+        VIEW WORKOUT
+      </button>
+    </section>
   )
 }
 

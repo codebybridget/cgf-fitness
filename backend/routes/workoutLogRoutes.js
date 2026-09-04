@@ -5,6 +5,7 @@ import {
   completeWorkout,
   getAdminMemberWorkoutProgress,
   getAdminWorkoutProgress,
+  getMyWorkoutHistory,
   getMyWorkoutLog,
   uncompleteSet,
 } from "../controllers/workoutLogController.js"
@@ -34,6 +35,16 @@ router.get(
   protect,
   authorize("member"),
   getMyWorkoutLog,
+)
+
+/*
+ * Get logged-in member's completed workout history.
+ */
+router.get(
+  "/me/history",
+  protect,
+  authorize("member"),
+  getMyWorkoutHistory,
 )
 
 /*
@@ -80,13 +91,6 @@ router.post(
  * ?date=2026-08-23
  * ?memberId=MEMBER_ID
  * ?status=completed
- *
- * Possible statuses:
- *
- * not_assigned
- * not_started
- * in_progress
- * completed
  */
 router.get(
   "/admin/progress",

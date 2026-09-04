@@ -571,7 +571,7 @@ function MembershipPlans() {
         {/* ============================================================ */}
 
         {showForm && (
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
+          <div className="mt-8 rounded-3xl border border-white/10 bg white/[0.04] p-6 sm:p-8">
 
             <div className="flex items-start justify-between gap-4">
 
@@ -924,7 +924,7 @@ function MembershipPlans() {
         {/* ============================================================ */}
 
         {!plans.length ? (
-          <div className="mt-10 rounded-3xl border border-white/10 bg-white/[0.04] p-10 text-center">
+          <div className="mt-10 rounded-3xl border border-white/10 bg white/[0.04] p-10 text-center">
 
             <p className="text-lg font-black">
               No membership plans yet
@@ -959,8 +959,8 @@ function MembershipPlans() {
                   }
                   className={`flex flex-col rounded-3xl border p-6 ${
                     plan.isActive
-                      ? "border-white/10 bg-white/[0.04]"
-                      : "border-red-500/10 bg-red-500/[0.03] opacity-70"
+                      ? "border-white/10 bg white/[0.04]"
+                      : "border-red-500/10 bg red-500/[0.03] opacity-70"
                   }`}
                 >
 

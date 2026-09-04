@@ -1,152 +1,146 @@
 import mongoose from "mongoose"
 
-const programAssignmentSchema =
-  new mongoose.Schema(
-    {
-      /*
-      |--------------------------------------------------------------------------
-      | Member
-      |--------------------------------------------------------------------------
-      */
+const programAssignmentSchema = new mongoose.Schema(
+  {
+    /*
+    |--------------------------------------------------------------------------
+    | Member
+    |--------------------------------------------------------------------------
+    */
 
-      member: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-        index: true,
-      },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Program
-      |--------------------------------------------------------------------------
-      */
-
-      program: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "Program",
-        required: true,
-        index: true,
-      },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Assigned By
-      |--------------------------------------------------------------------------
-      */
-
-      assignedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-      },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Training Day
-      |--------------------------------------------------------------------------
-      |
-      | This tells the system which day of the member's weekly schedule
-      | this assignment belongs to.
-      |
-      */
-
-      dayOfWeek: {
-        type: String,
-        enum: [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday",
-        ],
-        required: true,
-        index: true,
-      },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Assignment Start Date
-      |--------------------------------------------------------------------------
-      */
-
-      startDate: {
-        type: Date,
-        required: true,
-        index: true,
-      },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Assignment End Date
-      |--------------------------------------------------------------------------
-      */
-
-      endDate: {
-        type: Date,
-        default: null,
-      },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Status
-      |--------------------------------------------------------------------------
-      */
-
-      status: {
-        type: String,
-        enum: [
-          "active",
-          "completed",
-          "cancelled",
-        ],
-        default: "active",
-        index: true,
-      },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Notes
-      |--------------------------------------------------------------------------
-      */
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
+    member: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
     },
-    {
-      timestamps: true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Program
+    |--------------------------------------------------------------------------
+    */
+
+    program: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Program",
+      required: true,
+      index: true,
     },
-  )
+
+    /*
+    |--------------------------------------------------------------------------
+    | Assigned By
+    |--------------------------------------------------------------------------
+    */
+
+    assignedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | Workout Date
+    |--------------------------------------------------------------------------
+    |
+    | This is the exact date on which the member should see and perform
+    | this workout.
+    |
+    | Example:
+    | workoutDate = September 2, 2026
+    | dayOfWeek   = Wednesday
+    |
+    */
+
+    workoutDate: {
+      type: Date,
+      required: true,
+      index: true,
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | Day Of Week
+    |--------------------------------------------------------------------------
+    |
+    | Automatically derived from workoutDate.
+    |
+    */
+
+    dayOfWeek: {
+      type: String,
+      enum: [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ],
+      required: true,
+      index: true,
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | Status
+    |--------------------------------------------------------------------------
+    */
+
+    status: {
+      type: String,
+      enum: [
+        "active",
+        "completed",
+        "cancelled",
+      ],
+      default: "active",
+      index: true,
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | Notes
+    |--------------------------------------------------------------------------
+    */
+
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+)
 
 /*
 |--------------------------------------------------------------------------
 | Indexes
 |--------------------------------------------------------------------------
 |
-| These indexes make it fast to find a member's workout for a particular
-| day and date.
+| These indexes support:
+|
+| 1. Finding a member's workout for a specific date.
+| 2. Listing a member's assignments.
+| 3. Finding assignments for a particular program.
 |
 */
 
 programAssignmentSchema.index({
   member: 1,
-  dayOfWeek: 1,
+  workoutDate: 1,
   status: 1,
-  startDate: 1,
 })
 
 programAssignmentSchema.index({
   member: 1,
   status: 1,
-  startDate: 1,
+  workoutDate: 1,
 })
 
 programAssignmentSchema.index({
@@ -160,10 +154,9 @@ programAssignmentSchema.index({
 |--------------------------------------------------------------------------
 */
 
-const ProgramAssignment =
-  mongoose.model(
-    "ProgramAssignment",
-    programAssignmentSchema,
-  )
+const ProgramAssignment = mongoose.model(
+  "ProgramAssignment",
+  programAssignmentSchema,
+)
 
 export default ProgramAssignment

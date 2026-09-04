@@ -1,10 +1,7 @@
 import {
-  ArrowDown,
-  ArrowUp,
-  Check,
+  CalendarDays,
   Dumbbell,
   GripVertical,
-  Loader2,
   Plus,
   Save,
   Trash2,
@@ -18,628 +15,263 @@ import {
 
 import {
   createProgram,
-  getExercises,
+  deleteProgram,
   getPrograms,
   updateProgram,
 } from "../../api/api.js"
 
-const workoutTypes = [
+const weekDays = [
   {
-    value: "Lower Body",
-    label: "Lower Body",
+    day: "Monday",
+    workoutType: "Lower Body",
+    time: "",
   },
   {
-    value: "Upper Body",
-    label: "Upper Body",
+    day: "Tuesday",
+    workoutType: "Upper Body",
+    time: "",
   },
   {
-    value: "CrossFit",
-    label: "CrossFit",
+    day: "Wednesday",
+    workoutType: "Lower Body",
+    time: "",
   },
   {
-    value: "Tabata",
-    label: "Tabata",
+    day: "Thursday",
+    workoutType: "Upper Body",
+    time: "",
+  },
+  {
+    day: "Friday",
+    workoutType: "CrossFit",
+    time: "",
+  },
+  {
+    day: "Saturday",
+    workoutType: "Tabata",
+    time: "8:00 AM - 9:00 AM",
   },
 ]
 
-const emptyProgram = (
-  workoutType,
-) => ({
-  _id: null,
-  name:
-    `${workoutType} Program`,
-  description:
-    `Build the ${workoutType} program.`,
-  workoutType,
-  difficulty:
-    "Beginner",
-  estimatedDuration:
-    null,
-  exercises: [],
-  trainerNotes: "",
-})
+const workoutTypes = [
+  "Lower Body",
+  "Upper Body",
+  "CrossFit",
+  "Tabata",
+]
 
-function ProgramBuilder() {
-  const [selectedType, setSelectedType] =
-    useState("Lower Body")
+function Programs() {
+  const [
+    programs,
+    setPrograms,
+  ] = useState([])
 
-  const [programs, setPrograms] =
-    useState([])
+  const [
+    selectedProgramId,
+    setSelectedProgramId,
+  ] = useState("")
 
-  const [libraryExercises, setLibraryExercises] =
-    useState([])
+  const [
+    loading,
+    setLoading,
+  ] = useState(true)
 
-  const [program, setProgram] =
-    useState(
-      emptyProgram(
-        "Lower Body",
-      ),
-    )
+  const [
+    saving,
+    setSaving,
+  ] = useState(false)
 
-  const [loading, setLoading] =
-    useState(true)
+  const [
+    creating,
+    setCreating,
+  ] = useState(false)
 
-  const [saving, setSaving] =
-    useState(false)
-
-  const [saved, setSaved] =
-    useState(false)
-
-  const [error, setError] =
-    useState("")
+  const [
+    error,
+    setError,
+  ] = useState("")
 
   /*
   |--------------------------------------------------------------------------
-  | Load programs and exercises from MongoDB
+  | Load programs from MongoDB
   |--------------------------------------------------------------------------
   */
 
-  useEffect(() => {
-    loadBuilderData()
-  }, [])
-
-  const loadBuilderData =
+  const loadPrograms =
     async () => {
       try {
         setLoading(true)
         setError("")
 
-        const [
-          exerciseResponse,
-          programResponse,
-        ] = await Promise.all([
-          getExercises({
-            active: true,
-          }),
+        const response =
+          await getPrograms()
 
-          getPrograms({
-            active: true,
-          }),
-        ])
-
-        setLibraryExercises(
+        const loadedPrograms =
           Array.isArray(
-            exerciseResponse?.exercises,
+            response?.programs,
           )
-            ? exerciseResponse.exercises
-            : [],
-        )
+            ? response.programs
+            : []
+
+        const activePrograms =
+          loadedPrograms.filter(
+            (program) =>
+              program?.isActive !==
+              false,
+          )
 
         setPrograms(
-          Array.isArray(
-            programResponse?.programs,
-          )
-            ? programResponse.programs
-            : [],
+          activePrograms,
         )
 
-        const firstProgram =
-          programResponse?.programs?.find(
-            (item) =>
-              item.workoutType ===
-              "Lower Body",
-          )
+        /*
+        |--------------------------------------------------------------------------
+        | Select first available program
+        |--------------------------------------------------------------------------
+        */
 
-        if (firstProgram) {
-          setProgram(
-            normalizeProgram(
-              firstProgram,
-            ),
+        if (
+          activePrograms.length >
+          0
+        ) {
+          setSelectedProgramId(
+            (current) => {
+              const stillExists =
+                activePrograms.some(
+                  (program) =>
+                    getProgramId(
+                      program,
+                    ) === current,
+                )
+
+              return stillExists
+                ? current
+                : getProgramId(
+                    activePrograms[0],
+                  )
+            },
           )
+        } else {
+          setSelectedProgramId("")
         }
-      } catch (err) {
+      } catch (error) {
         console.error(
-          "Unable to load program builder data:",
-          err,
+          "Load programs error:",
+          error,
         )
 
         setError(
-          err.response?.data
+          error.response?.data
             ?.message ||
-            err.message ||
-            "Unable to load program data.",
+            error.message ||
+            "Unable to load workout programs.",
         )
       } finally {
         setLoading(false)
       }
     }
 
+  useEffect(() => {
+    loadPrograms()
+  }, [])
+
   /*
   |--------------------------------------------------------------------------
-  | Change workout type
+  | Selected program
   |--------------------------------------------------------------------------
   */
 
-  const changeProgram = (
-    workoutType,
-  ) => {
-    setSelectedType(
-      workoutType,
+  const selectedProgram =
+    useMemo(
+      () =>
+        programs.find(
+          (program) =>
+            getProgramId(
+              program,
+            ) ===
+            selectedProgramId,
+        ) || null,
+      [
+        programs,
+        selectedProgramId,
+      ],
     )
 
-    setSaved(false)
-    setError("")
+  /*
+  |--------------------------------------------------------------------------
+  | Program selection
+  |--------------------------------------------------------------------------
+  */
 
-    const existingProgram =
-      programs.find(
-        (item) =>
-          item.workoutType ===
-          workoutType,
+  const handleProgramChange =
+    (event) => {
+      setSelectedProgramId(
+        event.target.value,
       )
-
-    if (existingProgram) {
-      setProgram(
-        normalizeProgram(
-          existingProgram,
-        ),
-      )
-
-      return
     }
 
-    setProgram(
-      emptyProgram(
-        workoutType,
-      ),
-    )
-  }
-
   /*
   |--------------------------------------------------------------------------
-  | Available exercises
+  | Update program
   |--------------------------------------------------------------------------
   */
 
-  const availableExercises =
-    useMemo(() => {
-      return libraryExercises.filter(
-        (exercise) =>
-          exercise.category ===
-          selectedType,
-      )
-    }, [
-      libraryExercises,
-      selectedType,
-    ])
+  const handleUpdateProgram =
+    async (
+      changes,
+    ) => {
+      if (
+        !selectedProgram
+      ) {
+        return
+      }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Check if exercise is already added
-  |--------------------------------------------------------------------------
-  */
-
-  const isAdded = (
-    exerciseId,
-  ) => {
-    return program.exercises.some(
-      (item) =>
-        String(
-          item.exercise?._id ||
-            item.exercise ||
-            "",
-        ) ===
-        String(exerciseId),
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Add exercise
-  |--------------------------------------------------------------------------
-  */
-
-  const addExercise = (
-    exercise,
-  ) => {
-    if (
-      isAdded(
-        exercise._id,
-      )
-    ) {
-      return
-    }
-
-    const programExercise = {
-      exercise:
-        exercise._id,
-
-      order:
-        program.exercises.length +
-        1,
-
-      sets:
-        exercise.defaultSets ??
-        3,
-
-      reps:
-        exercise.defaultReps ??
-        null,
-
-      duration:
-        exercise.defaultDuration ??
-        null,
-
-      rest:
-        exercise.defaultRest ??
-        60,
-
-      notes: "",
-    }
-
-    setProgram(
-      (current) => ({
-        ...current,
-
-        exercises: [
-          ...current.exercises,
-          programExercise,
-        ],
-      }),
-    )
-
-    setSaved(false)
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Remove exercise
-  |--------------------------------------------------------------------------
-  */
-
-  const removeExercise = (
-    index,
-  ) => {
-    setProgram(
-      (current) => ({
-        ...current,
-
-        exercises:
-          current.exercises
-            .filter(
-              (_, itemIndex) =>
-                itemIndex !==
-                index,
-            )
-            .map(
-              (
-                item,
-                itemIndex,
-              ) => ({
-                ...item,
-                order:
-                  itemIndex +
-                  1,
-              }),
-            ),
-      }),
-    )
-
-    setSaved(false)
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Update program exercise
-  |--------------------------------------------------------------------------
-  */
-
-  const updateExercise = (
-    index,
-    field,
-    value,
-  ) => {
-    setProgram(
-      (current) => ({
-        ...current,
-
-        exercises:
-          current.exercises.map(
-            (
-              exercise,
-              itemIndex,
-            ) =>
-              itemIndex ===
-              index
-                ? {
-                    ...exercise,
-                    [field]:
-                      normalizeExerciseField(
-                        field,
-                        value,
-                      ),
-                  }
-                : exercise,
-          ),
-      }),
-    )
-
-    setSaved(false)
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Move exercise
-  |--------------------------------------------------------------------------
-  */
-
-  const moveExercise = (
-    index,
-    direction,
-  ) => {
-    const newIndex =
-      index + direction
-
-    if (
-      newIndex < 0 ||
-      newIndex >=
-        program.exercises.length
-    ) {
-      return
-    }
-
-    const exercises = [
-      ...program.exercises,
-    ]
-
-    const current =
-      exercises[index]
-
-    exercises[index] =
-      exercises[newIndex]
-
-    exercises[newIndex] =
-      current
-
-    const reordered =
-      exercises.map(
-        (
-          item,
-          itemIndex,
-        ) => ({
-          ...item,
-          order:
-            itemIndex + 1,
-        }),
-      )
-
-    setProgram(
-      (currentProgram) => ({
-        ...currentProgram,
-        exercises:
-          reordered,
-      }),
-    )
-
-    setSaved(false)
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Save program
-  |--------------------------------------------------------------------------
-  */
-
-  const handleSave =
-    async () => {
       try {
         setSaving(true)
-        setSaved(false)
         setError("")
 
-        if (
-          !program.name.trim()
-        ) {
-          setError(
-            "Program name is required.",
+        const programId =
+          getProgramId(
+            selectedProgram,
           )
 
-          return
-        }
-
-        if (
-          !program.workoutType
-        ) {
-          setError(
-            "Workout type is required.",
+        const response =
+          await updateProgram(
+            programId,
+            changes,
           )
 
-          return
-        }
+        const updatedProgram =
+          response?.program
 
         if (
-          program.exercises
-            .length === 0
+          updatedProgram
         ) {
-          setError(
-            "A program must contain at least one exercise.",
+          setPrograms(
+            (current) =>
+              current.map(
+                (program) =>
+                  getProgramId(
+                    program,
+                  ) === programId
+                    ? updatedProgram
+                    : program,
+              ),
           )
-
-          return
-        }
-
-        const payload = {
-          name:
-            program.name.trim(),
-
-          description:
-            program.description?.trim() ||
-            "",
-
-          workoutType:
-            program.workoutType,
-
-          difficulty:
-            program.difficulty ||
-            "Beginner",
-
-          estimatedDuration:
-            program.estimatedDuration
-              ? Number(
-                  program.estimatedDuration,
-                )
-              : null,
-
-          exercises:
-            program.exercises.map(
-              (
-                item,
-                index,
-              ) => ({
-                exercise:
-                  item.exercise?._id ||
-                  item.exercise,
-
-                order:
-                  index + 1,
-
-                sets:
-                  Number(
-                    item.sets,
-                  ),
-
-                reps:
-                  item.reps ===
-                    null ||
-                  item.reps ===
-                    undefined ||
-                  item.reps ===
-                    ""
-                    ? null
-                    : Number(
-                        item.reps,
-                      ),
-
-                duration:
-                  item.duration ===
-                    null ||
-                  item.duration ===
-                    undefined ||
-                  item.duration ===
-                    ""
-                    ? null
-                    : Number(
-                        item.duration,
-                      ),
-
-                rest:
-                  Number(
-                    item.rest ?? 60,
-                  ),
-
-                notes:
-                  item.notes?.trim() ||
-                  "",
-              }),
-            ),
-
-          trainerNotes:
-            program.trainerNotes?.trim() ||
-            "",
-        }
-
-        let response
-
-        if (program._id) {
-          response =
-            await updateProgram(
-              program._id,
-              payload,
-            )
         } else {
-          response =
-            await createProgram(
-              payload,
-            )
+          await loadPrograms()
         }
-
-        if (
-          !response?.success
-        ) {
-          throw new Error(
-            response?.message ||
-              "Unable to save program.",
-          )
-        }
-
-        const savedProgram =
-          response.program
-
-        setProgram(
-          normalizeProgram(
-            savedProgram,
-          ),
-        )
-
-        setPrograms(
-          (current) => {
-            const exists =
-              current.some(
-                (item) =>
-                  String(
-                    item._id,
-                  ) ===
-                  String(
-                    savedProgram._id,
-                  ),
-              )
-
-            if (exists) {
-              return current.map(
-                (item) =>
-                  String(
-                    item._id,
-                  ) ===
-                  String(
-                    savedProgram._id,
-                  )
-                    ? savedProgram
-                    : item,
-              )
-            }
-
-            return [
-              ...current,
-              savedProgram,
-            ]
-          },
-        )
-
-        setSaved(true)
-
-        setTimeout(() => {
-          setSaved(false)
-        }, 3000)
-      } catch (err) {
+      } catch (error) {
         console.error(
-          "Save program error:",
-          err,
+          "Update program error:",
+          error,
         )
 
         setError(
-          err.response?.data
+          error.response?.data
             ?.message ||
-            err.message ||
-            "Unable to save program.",
+            error.message ||
+            "Unable to update workout program.",
         )
       } finally {
         setSaving(false)
@@ -648,891 +280,1060 @@ function ProgramBuilder() {
 
   /*
   |--------------------------------------------------------------------------
-  | Loading
+  | Update exercise
   |--------------------------------------------------------------------------
   */
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white">
-        <div className="flex min-h-screen items-center justify-center">
-          <div className="text-center">
-            <Loader2
-              size={30}
-              className="mx-auto animate-spin text-lime-400"
-            />
+  const handleUpdateExercise =
+    async (
+      exerciseId,
+      changes,
+    ) => {
+      if (
+        !selectedProgram
+      ) {
+        return
+      }
 
-            <p className="mt-4 text-sm font-bold text-gray-500">
-              Loading program builder...
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
+      const currentExercises =
+        Array.isArray(
+          selectedProgram.exercises,
+        )
+          ? selectedProgram.exercises
+          : []
+
+      const updatedExercises =
+        currentExercises.map(
+          (exercise) => {
+            const id =
+              getExerciseId(
+                exercise,
+              )
+
+            if (
+              id !== exerciseId
+            ) {
+              return exercise
+            }
+
+            return {
+              ...exercise,
+              ...changes,
+            }
+          },
+        )
+
+      await handleUpdateProgram(
+        {
+          exercises:
+            updatedExercises,
+        },
+      )
+    }
 
   /*
   |--------------------------------------------------------------------------
-  | Render
+  | Remove exercise
   |--------------------------------------------------------------------------
   */
 
+  const handleRemoveExercise =
+    async (
+      exerciseId,
+    ) => {
+      if (
+        !selectedProgram
+      ) {
+        return
+      }
+
+      const confirmed =
+        window.confirm(
+          "Remove this exercise from the program?",
+        )
+
+      if (!confirmed) {
+        return
+      }
+
+      const currentExercises =
+        Array.isArray(
+          selectedProgram.exercises,
+        )
+          ? selectedProgram.exercises
+          : []
+
+      const updatedExercises =
+        currentExercises.filter(
+          (exercise) =>
+            getExerciseId(
+              exercise,
+            ) !== exerciseId,
+        )
+
+      await handleUpdateProgram(
+        {
+          exercises:
+            updatedExercises,
+        },
+      )
+    }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Create program
+  |--------------------------------------------------------------------------
+  */
+
+  const handleCreateProgram =
+    async () => {
+      const name =
+        window.prompt(
+          "Enter the program name:",
+        )
+
+      if (!name?.trim()) {
+        return
+      }
+
+      const workoutType =
+        window.prompt(
+          "Enter workout type:\nLower Body\nUpper Body\nCrossFit\nTabata",
+          "Lower Body",
+        )
+
+      const normalizedWorkoutType =
+        workoutTypes.includes(
+          workoutType,
+        )
+          ? workoutType
+          : "Lower Body"
+
+      try {
+        setCreating(true)
+        setError("")
+
+        /*
+        |--------------------------------------------------------------------------
+        | Backend requires at least one exercise.
+        |--------------------------------------------------------------------------
+        */
+
+        const response =
+          await createProgram({
+            name:
+              name.trim(),
+
+            description:
+              `${normalizedWorkoutType} training program.`,
+
+            workoutType:
+              normalizedWorkoutType,
+
+            exercises: [],
+
+            isActive: true,
+          })
+
+        const createdProgram =
+          response?.program
+
+        if (
+          !createdProgram
+        ) {
+          throw new Error(
+            "Program was created but no program was returned by the server.",
+          )
+        }
+
+        setPrograms(
+          (current) => [
+            ...current,
+            createdProgram,
+          ],
+        )
+
+        setSelectedProgramId(
+          getProgramId(
+            createdProgram,
+          ),
+        )
+
+        window.alert(
+          "Program created successfully.",
+        )
+      } catch (error) {
+        console.error(
+          "Create program error:",
+          error,
+        )
+
+        setError(
+          error.response?.data
+            ?.message ||
+            error.message ||
+            "Unable to create workout program.",
+        )
+      } finally {
+        setCreating(false)
+      }
+    }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Deactivate program
+  |--------------------------------------------------------------------------
+  */
+
+  const handleDeleteProgram =
+    async () => {
+      if (
+        !selectedProgram
+      ) {
+        return
+      }
+
+      const confirmed =
+        window.confirm(
+          `Deactivate "${selectedProgram.name}"?`,
+        )
+
+      if (!confirmed) {
+        return
+      }
+
+      try {
+        setSaving(true)
+        setError("")
+
+        await deleteProgram(
+          getProgramId(
+            selectedProgram,
+          ),
+        )
+
+        const remaining =
+          programs.filter(
+            (program) =>
+              getProgramId(
+                program,
+              ) !==
+              getProgramId(
+                selectedProgram,
+              ),
+          )
+
+        setPrograms(
+          remaining,
+        )
+
+        setSelectedProgramId(
+          remaining.length
+            ? getProgramId(
+                remaining[0],
+              )
+            : "",
+        )
+      } catch (error) {
+        console.error(
+          "Delete program error:",
+          error,
+        )
+
+        setError(
+          error.response?.data
+            ?.message ||
+            error.message ||
+            "Unable to deactivate workout program.",
+        )
+      } finally {
+        setSaving(false)
+      }
+    }
+
   return (
     <div className="min-h-screen bg-black text-white">
-      <main className="mx-auto max-w-7xl px-5 py-8">
-        <header>
-          <div className="flex items-center gap-2 text-lime-400">
-            <Dumbbell size={18} />
 
-            <span className="text-xs font-black uppercase tracking-widest">
-              Trainer Control
-            </span>
+      <main className="mx-auto max-w-6xl px-5 py-8">
+
+        {/* HEADER */}
+
+        <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+
+          <div>
+
+            <div className="flex items-center gap-2 text-lime-400">
+
+              <CalendarDays
+                size={18}
+              />
+
+              <span className="text-xs font-black uppercase tracking-widest">
+                CGF Training Programs
+              </span>
+
+            </div>
+
+            <h1 className="mt-2 text-3xl font-black">
+              Program Builder
+            </h1>
+
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+              Build the training programs that trainers will assign to CGF members.
+            </p>
+
           </div>
 
-          <div className="mt-2 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h1 className="text-3xl font-black">
-                Program Builder
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
-                Build the exact workout
-                members will perform by
-                selecting exercises from
-                the CGF exercise library.
-              </p>
-            </div>
+          <div className="flex flex-wrap gap-2">
 
             <button
               type="button"
               onClick={
-                handleSave
+                handleCreateProgram
               }
-              disabled={saving}
-              className="flex items-center justify-center gap-2 rounded-2xl bg-lime-400 px-5 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={
+                creating
+              }
+              className="flex items-center justify-center gap-2 rounded-2xl bg-yellow-400 px-5 py-3.5 text-sm font-black text-black disabled:opacity-50"
             >
-              {saving ? (
-                <>
-                  <Loader2
-                    size={17}
-                    className="animate-spin"
-                  />
-                  SAVING...
-                </>
-              ) : saved ? (
-                <>
-                  <Check size={17} />
-                  PROGRAM SAVED
-                </>
-              ) : (
-                <>
-                  <Save size={17} />
-                  SAVE PROGRAM
-                </>
-              )}
+
+              <Plus
+                size={17}
+              />
+
+              {creating
+                ? "CREATING..."
+                : "NEW PROGRAM"}
+
             </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleUpdateProgram(
+                  {},
+                )
+              }
+              disabled={
+                saving ||
+                !selectedProgram
+              }
+              className="flex items-center justify-center gap-2 rounded-2xl bg-lime-400 px-5 py-3.5 text-sm font-black text-black disabled:opacity-50"
+            >
+
+              <Save
+                size={17}
+              />
+
+              {saving
+                ? "SAVING..."
+                : "SAVE PROGRAM"}
+
+            </button>
+
           </div>
+
         </header>
 
+        {/* ERROR */}
+
         {error && (
-          <div className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm font-bold text-red-300">
+          <div className="mt-6 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm font-bold text-red-400">
             {error}
           </div>
         )}
 
-        <section className="mt-8 grid grid-cols-2 gap-2 md:grid-cols-4">
-          {workoutTypes.map(
-            (type) => {
-              const typeProgram =
-                programs.find(
-                  (item) =>
-                    item.workoutType ===
-                    type.value,
-                )
+        {/* LOADING */}
 
-              return (
-                <button
-                  key={
-                    type.value
-                  }
-                  type="button"
-                  onClick={() =>
-                    changeProgram(
-                      type.value,
-                    )
-                  }
-                  className={`rounded-2xl border p-4 text-left transition ${
-                    selectedType ===
-                    type.value
-                      ? "border-yellow-400 bg-yellow-400/10"
-                      : "border-white/10 bg-white/5"
-                  }`}
-                >
-                  <p
-                    className={`text-xs font-black ${
-                      selectedType ===
-                      type.value
-                        ? "text-yellow-400"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {
-                      type.label
-                    }
-                  </p>
+        {loading ? (
+          <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-12 text-center">
 
-                  <p className="mt-2 text-[10px] text-gray-600">
-                    {
-                      typeProgram
-                        ?.exercises
-                        ?.length ||
-                      0
-                    }{" "}
-                    exercises
-                  </p>
-                </button>
-              )
-            },
-          )}
-        </section>
+            <p className="text-sm font-bold text-gray-500">
+              Loading programs from MongoDB...
+            </p>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_380px]">
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <p className="text-xs font-black uppercase tracking-wider text-gray-600">
-                  Current Program
-                </p>
+          </div>
+        ) : programs.length ===
+          0 ? (
+          <div className="mt-8 rounded-3xl border border-dashed border-white/10 bg-white/5 p-12 text-center">
 
-                <input
-                  value={
-                    program.name
-                  }
-                  onChange={(
-                    event,
-                  ) => {
-                    setProgram(
-                      (
-                        current,
-                      ) => ({
-                        ...current,
-                        name:
-                          event
-                            .target
-                            .value,
-                      }),
-                    )
+            <Dumbbell
+              size={32}
+              className="mx-auto text-gray-700"
+            />
 
-                    setSaved(
-                      false,
-                    )
-                  }}
-                  className="mt-2 w-full border-b border-white/10 bg-transparent pb-2 text-2xl font-black text-white outline-none focus:border-lime-400"
-                  placeholder="Program name"
-                />
+            <h2 className="mt-4 text-lg font-black">
+              No workout programs found
+            </h2>
 
-                <textarea
-                  rows={3}
-                  value={
-                    program.description ||
-                    ""
-                  }
-                  onChange={(
-                    event,
-                  ) => {
-                    setProgram(
-                      (
-                        current,
-                      ) => ({
-                        ...current,
-                        description:
-                          event
-                            .target
-                            .value,
-                      }),
-                    )
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-600">
+              Create your first program so it can later be assigned to members.
+            </p>
 
-                    setSaved(
-                      false,
-                    )
-                  }}
-                  className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs leading-5 text-gray-400 outline-none focus:border-lime-400"
-                  placeholder="Program description..."
-                />
-              </div>
+            <button
+              type="button"
+              onClick={
+                handleCreateProgram
+              }
+              className="mt-5 rounded-2xl bg-yellow-400 px-5 py-3 text-xs font-black text-black"
+            >
+              CREATE FIRST PROGRAM
+            </button>
 
-              <div className="rounded-2xl bg-yellow-400 p-3 text-black">
-                <Dumbbell size={20} />
-              </div>
-            </div>
+          </div>
+        ) : (
+          <>
+            {/* PROGRAM SELECTOR */}
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <SelectField
-                label="Difficulty"
-                value={
-                  program.difficulty ||
-                  "Beginner"
-                }
-                onChange={(
-                  value,
-                ) => {
-                  setProgram(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      difficulty:
-                        value,
-                    }),
-                  )
+            <section className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
 
-                  setSaved(
-                    false,
-                  )
-                }}
-                options={[
-                  "Beginner",
-                  "Intermediate",
-                  "Advanced",
-                ]}
-              />
-
-              <NumberField
-                label="Duration (min)"
-                value={
-                  program.estimatedDuration ??
-                  ""
-                }
-                onChange={(
-                  value,
-                ) => {
-                  setProgram(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      estimatedDuration:
-                        value,
-                    }),
-                  )
-
-                  setSaved(
-                    false,
-                  )
-                }}
-              />
-            </div>
-
-            <div className="mt-6">
-              {program.exercises
-                .length === 0 ? (
-                <EmptyProgram />
-              ) : (
-                <div className="space-y-3">
-                  {program.exercises.map(
-                    (
-                      exercise,
-                      index,
-                    ) => (
-                      <ProgramExercise
-                        key={`${exercise.exercise?._id || exercise.exercise}-${index}`}
-                        exercise={
-                          exercise
-                        }
-                        index={
-                          index
-                        }
-                        total={
-                          program
-                            .exercises
-                            .length
-                        }
-                        onChange={
-                          updateExercise
-                        }
-                        onMove={
-                          moveExercise
-                        }
-                        onRemove={
-                          removeExercise
-                        }
-                      />
-                    ),
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-5">
-              <label className="mb-2 block text-[9px] font-black uppercase tracking-wider text-gray-700">
-                Trainer Notes
+              <label
+                htmlFor="program-selector"
+                className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-600"
+              >
+                Select Program
               </label>
 
-              <textarea
-                rows={3}
+              <select
+                id="program-selector"
                 value={
-                  program.trainerNotes ||
-                  ""
+                  selectedProgramId
                 }
-                onChange={(
-                  event,
-                ) => {
-                  setProgram(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      trainerNotes:
-                        event
-                          .target
-                          .value,
-                    }),
-                  )
-
-                  setSaved(
-                    false,
-                  )
-                }}
-                className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-400 outline-none focus:border-lime-400"
-                placeholder="Optional trainer notes..."
-              />
-            </div>
-          </section>
-
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
-            <div>
-              <p className="text-xs font-black uppercase tracking-wider text-gray-600">
-                Exercise Library
-              </p>
-
-              <h2 className="mt-1 text-xl font-black">
-                Add Exercises
-              </h2>
-
-              <p className="mt-2 text-xs leading-5 text-gray-600">
-                Showing exercises for{" "}
-                {
-                  selectedType
+                onChange={
+                  handleProgramChange
                 }
-                .
-              </p>
-            </div>
+                className="w-full rounded-2xl border border-white/10 bg-black px-4 py-4 text-sm font-black text-white outline-none focus:border-lime-400"
+              >
 
-            <div className="mt-5 space-y-2">
-              {availableExercises.length ===
-              0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center">
-                  <Dumbbell
-                    size={25}
-                    className="mx-auto text-gray-700"
-                  />
-
-                  <p className="mt-3 text-xs font-bold text-gray-500">
-                    No exercises in
-                    this category.
-                  </p>
-
-                  <p className="mt-1 text-[10px] text-gray-700">
-                    Create one in
-                    the Exercise
-                    Library.
-                  </p>
-                </div>
-              ) : (
-                availableExercises.map(
+                {programs.map(
                   (
-                    exercise,
+                    program,
                   ) => (
-                    <LibraryExercise
-                      key={
-                        exercise._id
-                      }
-                      exercise={
-                        exercise
-                      }
-                      added={isAdded(
-                        exercise._id,
+                    <option
+                      key={getProgramId(
+                        program,
                       )}
-                      onAdd={() =>
-                        addExercise(
-                          exercise,
+                      value={getProgramId(
+                        program,
+                      )}
+                    >
+                      {program.name ||
+                        "Unnamed Program"}
+                      {program.workoutType
+                        ? ` — ${program.workoutType}`
+                        : ""}
+                    </option>
+                  ),
+                )}
+
+              </select>
+
+            </section>
+
+            {/* PROGRAM CARDS */}
+
+            <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+
+              {programs.map(
+                (
+                  program,
+                ) => {
+                  const active =
+                    getProgramId(
+                      program,
+                    ) ===
+                    selectedProgramId
+
+                  return (
+                    <button
+                      key={getProgramId(
+                        program,
+                      )}
+                      type="button"
+                      onClick={() =>
+                        setSelectedProgramId(
+                          getProgramId(
+                            program,
+                          ),
+                        )
+                      }
+                      className={`rounded-3xl border p-5 text-left transition ${
+                        active
+                          ? "border-lime-400/40 bg-lime-400/10"
+                          : "border-white/10 bg-white/5"
+                      }`}
+                    >
+
+                      <div className="flex items-start justify-between">
+
+                        <div>
+
+                          <p
+                            className={`text-xs font-black uppercase tracking-wider ${
+                              active
+                                ? "text-lime-400"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {program.workoutType ||
+                              "Workout"}
+                          </p>
+
+                          <h2 className="mt-1 text-lg font-black">
+                            {program.name ||
+                              "Unnamed Program"}
+                          </h2>
+
+                        </div>
+
+                        <div className="rounded-xl bg-black p-2">
+
+                          <Dumbbell
+                            size={17}
+                            className={
+                              active
+                                ? "text-yellow-400"
+                                : "text-gray-600"
+                            }
+                          />
+
+                        </div>
+
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between text-xs">
+
+                        <span className="text-gray-600">
+                          {program.exercises
+                            ?.length ||
+                            0}{" "}
+                          exercises
+                        </span>
+
+                        <span className="text-yellow-400">
+                          {program.isActive ===
+                          false
+                            ? "Inactive"
+                            : "Active"}
+                        </span>
+
+                      </div>
+
+                    </button>
+                  )
+                },
+              )}
+
+            </section>
+
+            {/* SELECTED PROGRAM */}
+
+            {selectedProgram && (
+              <section className="mt-8">
+
+                {/* PROGRAM DETAILS */}
+
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+
+                  <div className="grid gap-4 md:grid-cols-3">
+
+                    <Field
+                      label="Program Name"
+                      value={
+                        selectedProgram.name ||
+                        ""
+                      }
+                      onChange={(
+                        value,
+                      ) =>
+                        handleUpdateProgram(
+                          {
+                            name: value,
+                          },
                         )
                       }
                     />
-                  ),
-                )
-              )}
-            </div>
-          </section>
-        </div>
+
+                    <Field
+                      label="Workout Type"
+                      value={
+                        selectedProgram.workoutType ||
+                        ""
+                      }
+                      onChange={(
+                        value,
+                      ) =>
+                        handleUpdateProgram(
+                          {
+                            workoutType:
+                              value,
+                          },
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Class Time"
+                      value={
+                        selectedProgram.time ||
+                        ""
+                      }
+                      placeholder="Optional"
+                      onChange={(
+                        value,
+                      ) =>
+                        handleUpdateProgram(
+                          {
+                            time: value,
+                          },
+                        )
+                      }
+                    />
+
+                  </div>
+
+                </div>
+
+                {/* EXERCISES */}
+
+                <div className="mt-6 flex items-center justify-between">
+
+                  <div>
+
+                    <h2 className="text-xl font-black">
+                      Assigned Exercises
+                    </h2>
+
+                    <p className="mt-1 text-xs text-gray-600">
+                      {selectedProgram
+                        .exercises
+                        ?.length ||
+                        0}{" "}
+                      exercises in this workout
+                    </p>
+
+                  </div>
+
+                  <span className="rounded-full bg-yellow-400/10 px-3 py-2 text-[10px] font-black uppercase text-yellow-400">
+                    {selectedProgram.workoutType ||
+                      "Workout"}
+                  </span>
+
+                </div>
+
+                <div className="mt-4 space-y-3">
+
+                  {selectedProgram
+                    .exercises
+                    ?.length === 0 ||
+                  !selectedProgram
+                    .exercises ? (
+                    <EmptyProgram />
+                  ) : (
+                    selectedProgram.exercises.map(
+                      (
+                        exercise,
+                        index,
+                      ) => (
+                        <ProgramExercise
+                          key={
+                            getExerciseId(
+                              exercise,
+                            ) ||
+                            index
+                          }
+                          exercise={
+                            exercise
+                          }
+                          index={
+                            index
+                          }
+                          onUpdate={(
+                            changes,
+                          ) =>
+                            handleUpdateExercise(
+                              getExerciseId(
+                                exercise,
+                              ),
+                              changes,
+                            )
+                          }
+                          onRemove={() =>
+                            handleRemoveExercise(
+                              getExerciseId(
+                                exercise,
+                              ),
+                            )
+                          }
+                        />
+                      ),
+                    )
+                  )}
+
+                </div>
+
+                {/* ADD EXERCISE INFORMATION */}
+
+                <div className="mt-6 rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
+
+                  <Plus
+                    size={24}
+                    className="mx-auto text-gray-700"
+                  />
+
+                  <p className="mt-3 text-sm font-black">
+                    Add exercises from the Exercise Library
+                  </p>
+
+                  <p className="mt-1 text-xs text-gray-600">
+                    Open Admin → Exercises and use "Add to Program".
+                  </p>
+
+                </div>
+
+                {/* DELETE PROGRAM */}
+
+                <div className="mt-6 flex justify-end">
+
+                  <button
+                    type="button"
+                    onClick={
+                      handleDeleteProgram
+                    }
+                    disabled={
+                      saving
+                    }
+                    className="flex items-center gap-2 rounded-2xl bg-red-400/10 px-4 py-3 text-xs font-black text-red-400 disabled:opacity-50"
+                  >
+
+                    <Trash2
+                      size={15}
+                    />
+
+                    DEACTIVATE PROGRAM
+
+                  </button>
+
+                </div>
+
+              </section>
+            )}
+
+          </>
+        )}
+
       </main>
+
     </div>
   )
 }
 
 /*
 |--------------------------------------------------------------------------
-| Normalize program returned from MongoDB
-|--------------------------------------------------------------------------
-*/
-
-function normalizeProgram(
-  program,
-) {
-  if (!program) {
-    return emptyProgram(
-      "Lower Body",
-    )
-  }
-
-  return {
-    _id:
-      program._id ||
-      null,
-
-    name:
-      program.name ||
-      "Workout Program",
-
-    description:
-      program.description ||
-      "",
-
-    workoutType:
-      program.workoutType ||
-      "Lower Body",
-
-    difficulty:
-      program.difficulty ||
-      "Beginner",
-
-    estimatedDuration:
-      program.estimatedDuration ??
-      null,
-
-    exercises:
-      Array.isArray(
-        program.exercises,
-      )
-        ? program.exercises.map(
-            (
-              item,
-              index,
-            ) => ({
-              exercise:
-                item.exercise,
-
-              order:
-                item.order ??
-                index + 1,
-
-              sets:
-                item.sets ?? 3,
-
-              reps:
-                item.reps ??
-                null,
-
-              duration:
-                item.duration ??
-                null,
-
-              rest:
-                item.rest ??
-                60,
-
-              notes:
-                item.notes ||
-                "",
-            }),
-          )
-        : [],
-
-    trainerNotes:
-      program.trainerNotes ||
-      "",
-  }
-}
-
-/*
-|--------------------------------------------------------------------------
-| Normalize exercise fields
-|--------------------------------------------------------------------------
-*/
-
-function normalizeExerciseField(
-  field,
-  value,
-) {
-  if (
-    field === "sets" ||
-    field === "reps" ||
-    field === "duration" ||
-    field === "rest"
-  ) {
-    if (value === "") {
-      return null
-    }
-
-    return Number(value)
-  }
-
-  return value
-}
-
-/*
-|--------------------------------------------------------------------------
-| Empty program
-|--------------------------------------------------------------------------
-*/
-
-function EmptyProgram() {
-  return (
-    <div className="rounded-3xl border border-dashed border-white/10 p-10 text-center">
-      <Dumbbell
-        size={32}
-        className="mx-auto text-gray-700"
-      />
-
-      <h3 className="mt-4 text-sm font-black">
-        No exercises added
-      </h3>
-
-      <p className="mt-1 text-xs leading-5 text-gray-600">
-        Select exercises from
-        the library on the right
-        to build this program.
-      </p>
-    </div>
-  )
-}
-
-/*
-|--------------------------------------------------------------------------
-| Exercise library item
-|--------------------------------------------------------------------------
-*/
-
-function LibraryExercise({
-  exercise,
-  added,
-  onAdd,
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-black">
-            {exercise.name}
-          </p>
-
-          <p className="mt-1 text-[10px] text-gray-600">
-            {exercise.defaultSets ??
-              3}{" "}
-            sets
-            {" · "}
-            {exercise.defaultReps ??
-              "-"}{" "}
-            reps
-            {" · "}
-            {exercise.defaultRest ??
-              60}
-            s rest
-          </p>
-        </div>
-
-        <button
-          type="button"
-          disabled={added}
-          onClick={
-            onAdd
-          }
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-            added
-              ? "bg-lime-400/10 text-lime-400"
-              : "bg-yellow-400 text-black"
-          }`}
-          aria-label={
-            added
-              ? "Exercise already added"
-              : `Add ${exercise.name}`
-          }
-        >
-          {added ? (
-            <Check size={16} />
-          ) : (
-            <Plus size={16} />
-          )}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/*
-|--------------------------------------------------------------------------
-| Program exercise
+| Program Exercise
 |--------------------------------------------------------------------------
 */
 
 function ProgramExercise({
   exercise,
   index,
-  total,
-  onChange,
-  onMove,
+  onUpdate,
   onRemove,
 }) {
-  const exerciseName =
-    exercise.exercise?.name ||
-    "Exercise"
+  const isTabata =
+    String(
+      exercise.category ||
+        exercise.workoutType ||
+        "",
+    ).toLowerCase() ===
+    "tabata"
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-black p-4">
-      <div className="flex items-start gap-3">
-        <div className="mt-1 text-gray-700">
+    <article className="rounded-3xl border border-white/10 bg-white/5 p-5">
+
+      <div className="flex items-start gap-4">
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-gray-600">
+
           <GripVertical
             size={18}
           />
+
         </div>
 
-        <div className="flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-yellow-400">
-                Exercise{" "}
-                {index + 1}
-              </p>
+        <div className="min-w-0 flex-1">
 
-              <h3 className="mt-1 text-sm font-black">
-                {
-                  exerciseName
-                }
-              </h3>
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
 
-            <button
-              type="button"
-              onClick={() =>
-                onRemove(
-                  index,
-                )
-              }
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 text-red-400"
-              aria-label={`Remove ${exerciseName}`}
-            >
-              <Trash2
-                size={14}
-              />
-            </button>
+            <span className="text-[10px] font-black text-yellow-400">
+              EXERCISE {index + 1}
+            </span>
+
+            <span className="rounded-full bg-lime-400/10 px-2 py-1 text-[9px] font-black uppercase text-lime-400">
+              {exercise.category ||
+                "Exercise"}
+            </span>
+
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <MiniField
-              label="Sets"
-              value={
-                exercise.sets ??
-                ""
-              }
-              type="number"
-              onChange={(
-                value,
-              ) =>
-                onChange(
-                  index,
-                  "sets",
-                  value,
-                )
-              }
-            />
+          <h3 className="mt-1 text-base font-black">
+            {exercise.name ||
+              "Unnamed Exercise"}
+          </h3>
 
-            <MiniField
-              label="Reps"
-              value={
-                exercise.reps ??
-                ""
-              }
-              type="number"
-              onChange={(
-                value,
-              ) =>
-                onChange(
-                  index,
-                  "reps",
-                  value,
+          <p className="mt-1 text-xs text-gray-600">
+            {exercise.muscleGroup ||
+              "Muscle group"}{" "}
+            ·{" "}
+            {Array.isArray(
+              exercise.equipment,
+            )
+              ? exercise.equipment.join(
+                  ", ",
                 )
-              }
-            />
+              : exercise.equipment ||
+                "No equipment"}
+          </p>
 
-            <MiniField
-              label="Duration"
-              value={
-                exercise.duration ??
-                ""
-              }
-              type="number"
-              onChange={(
-                value,
-              ) =>
-                onChange(
-                  index,
-                  "duration",
-                  value,
-                )
-              }
-            />
-
-            <MiniField
-              label="Rest"
-              value={
-                exercise.rest ??
-                ""
-              }
-              type="number"
-              onChange={(
-                value,
-              ) =>
-                onChange(
-                  index,
-                  "rest",
-                  value,
-                )
-              }
-            />
-          </div>
-
-          <div className="mt-3">
-            <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-gray-700">
-              Notes
-            </label>
-
-            <textarea
-              rows={2}
-              value={
-                exercise.notes ||
-                ""
-              }
-              onChange={(
-                event,
-              ) =>
-                onChange(
-                  index,
-                  "notes",
-                  event.target
-                    .value,
-                )
-              }
-              className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-400 outline-none focus:border-lime-400"
-              placeholder="Exercise notes..."
-            />
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              disabled={
-                index === 0
-              }
-              onClick={() =>
-                onMove(
-                  index,
-                  -1,
-                )
-              }
-              className="flex h-8 items-center gap-1 rounded-lg bg-white/5 px-3 text-[10px] font-black text-gray-500 disabled:opacity-20"
-            >
-              <ArrowUp
-                size={12}
-              />
-              UP
-            </button>
-
-            <button
-              type="button"
-              disabled={
-                index ===
-                total - 1
-              }
-              onClick={() =>
-                onMove(
-                  index,
-                  1,
-                )
-              }
-              className="flex h-8 items-center gap-1 rounded-lg bg-white/5 px-3 text-[10px] font-black text-gray-500 disabled:opacity-20"
-            >
-              <ArrowDown
-                size={12}
-              />
-              DOWN
-            </button>
-          </div>
         </div>
+
+        <button
+          type="button"
+          onClick={
+            onRemove
+          }
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-400/10 text-red-400"
+          aria-label={`Remove ${
+            exercise.name ||
+            "exercise"
+          }`}
+        >
+          <Trash2
+            size={15}
+          />
+        </button>
+
       </div>
+
+      {isTabata ? (
+        <div className="mt-5 grid grid-cols-3 gap-3">
+
+          <NumberField
+            label="Work Seconds"
+            value={
+              exercise.workInterval
+            }
+            onChange={(
+              value,
+            ) =>
+              onUpdate({
+                workInterval:
+                  Number(
+                    value,
+                  ),
+              })
+            }
+          />
+
+          <NumberField
+            label="Rest Seconds"
+            value={
+              exercise.restInterval
+            }
+            onChange={(
+              value,
+            ) =>
+              onUpdate({
+                restInterval:
+                  Number(
+                    value,
+                  ),
+              })
+            }
+          />
+
+          <NumberField
+            label="Rounds"
+            value={
+              exercise.rounds
+            }
+            onChange={(
+              value,
+            ) =>
+              onUpdate({
+                rounds:
+                  Number(
+                    value,
+                  ),
+              })
+            }
+          />
+
+        </div>
+      ) : (
+        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+
+          <NumberField
+            label="Sets"
+            value={
+              exercise.sets
+            }
+            onChange={(
+              value,
+            ) =>
+              onUpdate({
+                sets:
+                  Number(
+                    value,
+                  ),
+              })
+            }
+          />
+
+          <NumberField
+            label="Reps"
+            value={
+              exercise.reps
+            }
+            onChange={(
+              value,
+            ) =>
+              onUpdate({
+                reps:
+                  Number(
+                    value,
+                  ),
+              })
+            }
+          />
+
+          <TextField
+            label="Weight"
+            value={
+              exercise.weight
+            }
+            placeholder="e.g. 20 kg"
+            onChange={(
+              value,
+            ) =>
+              onUpdate({
+                weight: value,
+              })
+            }
+          />
+
+          <TextField
+            label="Rest"
+            value={
+              exercise.rest
+            }
+            placeholder="e.g. 60 sec"
+            onChange={(
+              value,
+            ) =>
+              onUpdate({
+                rest: value,
+              })
+            }
+          />
+
+        </div>
+      )}
+
+      <TextField
+        label="Trainer Notes"
+        value={
+          exercise.notes
+        }
+        placeholder="Optional instructions for members"
+        onChange={(
+          value,
+        ) =>
+          onUpdate({
+            notes: value,
+          })
+        }
+      />
+
     </article>
   )
 }
 
 /*
 |--------------------------------------------------------------------------
-| Mini field
+| Field
 |--------------------------------------------------------------------------
 */
 
-function MiniField({
+function Field({
   label,
   value,
   onChange,
-  type = "text",
+  placeholder,
+  disabled = false,
 }) {
   return (
     <div>
-      <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-gray-700">
+
+      <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-600">
         {label}
       </label>
 
       <input
-        type={type}
-        min={
-          type === "number"
-            ? 0
-            : undefined
+        value={
+          value ?? ""
         }
-        value={value}
+        disabled={
+          disabled
+        }
+        placeholder={
+          placeholder
+        }
         onChange={(
           event,
         ) =>
-          onChange(
+          onChange?.(
             event.target
               .value,
           )
         }
-        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-lime-400"
+        className={`w-full rounded-2xl border border-white/10 px-4 py-3.5 text-xs font-bold outline-none ${
+          disabled
+            ? "bg-black/50 text-gray-600"
+            : "bg-black text-white focus:border-lime-400"
+        }`}
       />
+
     </div>
   )
 }
 
 /*
 |--------------------------------------------------------------------------
-| Select field
+| Text Field
 |--------------------------------------------------------------------------
 */
 
-function SelectField({
+function TextField({
   label,
   value,
   onChange,
-  options,
+  placeholder,
 }) {
   return (
-    <div>
-      <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-gray-700">
+    <div className="mt-3">
+
+      <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-600">
         {label}
       </label>
 
-      <select
-        value={value}
+      <input
+        value={
+          value || ""
+        }
+        placeholder={
+          placeholder
+        }
         onChange={(
           event,
         ) =>
@@ -1541,26 +1342,16 @@ function SelectField({
               .value,
           )
         }
-        className="w-full rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-lime-400"
-      >
-        {options.map(
-          (option) => (
-            <option
-              key={option}
-              value={option}
-            >
-              {option}
-            </option>
-          ),
-        )}
-      </select>
+        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-bold text-white outline-none placeholder:text-gray-700 focus:border-lime-400"
+      />
+
     </div>
   )
 }
 
 /*
 |--------------------------------------------------------------------------
-| Number field
+| Number Field
 |--------------------------------------------------------------------------
 */
 
@@ -1571,14 +1362,17 @@ function NumberField({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-gray-700">
+
+      <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-gray-600">
         {label}
       </label>
 
       <input
         type="number"
-        min="1"
-        value={value}
+        min="0"
+        value={
+          value ?? ""
+        }
         onChange={(
           event,
         ) =>
@@ -1587,11 +1381,78 @@ function NumberField({
               .value,
           )
         }
-        className="w-full rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-lime-400"
-        placeholder="Optional"
+        className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-black text-yellow-400 outline-none focus:border-lime-400"
       />
+
     </div>
   )
 }
 
-export default ProgramBuilder
+/*
+|--------------------------------------------------------------------------
+| Empty Program
+|--------------------------------------------------------------------------
+*/
+
+function EmptyProgram() {
+  return (
+    <div className="rounded-3xl border border-dashed border-white/10 p-10 text-center">
+
+      <Dumbbell
+        size={30}
+        className="mx-auto text-gray-700"
+      />
+
+      <h3 className="mt-4 text-sm font-black">
+        No exercises assigned yet
+      </h3>
+
+      <p className="mt-2 text-xs text-gray-600">
+        Add exercises from the Exercise Library to build this workout.
+      </p>
+
+    </div>
+  )
+}
+
+/*
+|--------------------------------------------------------------------------
+| Helpers
+|--------------------------------------------------------------------------
+*/
+
+function getProgramId(
+  program,
+) {
+  return (
+    program?._id ||
+    program?.id ||
+    ""
+  )
+}
+
+function getExerciseId(
+  exercise,
+) {
+  if (
+    typeof exercise?.exercise ===
+    "object"
+  ) {
+    return (
+      exercise.exercise?._id ||
+      exercise.exercise?.id ||
+      exercise._id ||
+      exercise.id ||
+      ""
+    )
+  }
+
+  return (
+    exercise?.exercise ||
+    exercise?._id ||
+    exercise?.id ||
+    ""
+  )
+}
+
+export default Programs
