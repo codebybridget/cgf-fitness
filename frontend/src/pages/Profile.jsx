@@ -358,6 +358,11 @@ function Profile() {
     setPhotoUploading,
   ] = useState(false)
 
+  const [
+    showLogoutConfirm,
+    setShowLogoutConfirm,
+  ] = useState(false)
+
 
   /*
   |--------------------------------------------------------------------------
@@ -850,16 +855,12 @@ function Profile() {
 
 
   const handleLogout = () => {
-    const confirmed =
-      window.confirm(
-        "Are you sure you want to log out?",
-      )
+    setShowLogoutConfirm(true)
+  }
 
-    if (!confirmed) {
-      return
-    }
-
+  const confirmLogout = () => {
     logout()
+    setShowLogoutConfirm(false)
 
     navigate(
       "/login",
@@ -1517,6 +1518,43 @@ function Profile() {
 
       </main>
 
+
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-5 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-title"
+            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#111] p-6 shadow-2xl"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-red-400">
+              <LogOut size={21} />
+            </div>
+            <h2 id="logout-title" className="mt-4 text-lg font-black text-white">
+              Log out?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-gray-500">
+              Are you sure you want to log out of CGF Fitness?
+            </p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-black text-gray-300 transition hover:bg-white/10"
+              >
+                CANCEL
+              </button>
+              <button
+                type="button"
+                onClick={confirmLogout}
+                className="rounded-2xl bg-red-500 px-4 py-3 text-sm font-black text-white transition hover:bg-red-400"
+              >
+                LOG OUT
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <BottomNavigation />
 
