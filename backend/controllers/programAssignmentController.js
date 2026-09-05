@@ -497,19 +497,34 @@ const updateProgramAssignment = async (req, res) => {
         })
       }
 
-      const programDocument = await Program.findOne({
-        _id: program,
-        $or: [
-          { isActive: true },
-          { isActive: { $exists: false } },
-        ],
-      })
+      /*
+       * If the assignment already uses this same program, allow the edit
+       * to continue even if that program was later deactivated. Editing
+       * the date or notes should not fail because of the program status.
+       *
+       * Only require an active program when the administrator is actually
+       * changing the assignment to a different program.
+       */
+      const currentProgramId = String(
+        assignment.program?._id || assignment.program || "",
+      )
+      const requestedProgramId = String(program)
 
-      if (!programDocument) {
-        return res.status(404).json({
-          success: false,
-          message: "Active program not found.",
+      if (currentProgramId !== requestedProgramId) {
+        const programDocument = await Program.findOne({
+          _id: program,
+          $or: [
+            { isActive: true },
+            { isActive: { $exists: false } },
+          ],
         })
+
+        if (!programDocument) {
+          return res.status(404).json({
+            success: false,
+            message: "Active program not found.",
+          })
+        }
       }
 
       assignment.program = program

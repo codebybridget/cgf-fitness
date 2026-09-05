@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import {
   ArrowLeft,
   CheckCircle2,
@@ -12,7 +12,10 @@ import {
 import { useNavigate } from "react-router-dom"
 
 import WeightProgressChart from "../components/WeightProgressChart"
-import { getWorkoutStatistics } from "../utils/workoutStorage"
+import {
+  getMyPrograms,
+  getMyWorkoutHistory,
+} from "../api/api"
 import {
   addWeightEntry,
   getProgressData,
@@ -21,6 +24,48 @@ import {
   getFitnessGoalLabel,
   getProfile,
 } from "../utils/profileStorage"
+
+function normalizeFitnessGoal(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_")
+
+  if (
+    normalized === "keep_fit" ||
+    normalized === "keepfit" ||
+    normalized === "maintain_fitness"
+  ) {
+    return "keep_fit"
+  }
+
+  if (
+    normalized === "lose_weight" ||
+    normalized === "weight_loss" ||
+    normalized === "weightloss"
+  ) {
+    return "lose_weight"
+  }
+
+  if (
+    normalized === "gain_weight" ||
+    normalized === "weight_gain" ||
+    normalized === "weightgain"
+  ) {
+    return "gain_weight"
+  }
+
+  if (
+    normalized === "become_trainer" ||
+    normalized === "training_to_become_a_trainer" ||
+    normalized === "training_to_become_trainer" ||
+    normalized === "trainer_training"
+  ) {
+    return "become_trainer"
+  }
+
+  return normalized
+}
 
 function Progress() {
   const navigate = useNavigate()
@@ -35,10 +80,90 @@ function Progress() {
       getProgressData(),
     )
 
-  const statistics = useMemo(
-    () => getWorkoutStatistics(),
-    [],
-  )
+  const [statistics, setStatistics] =
+    useState({
+      currentStreak: 0,
+      totalWorkouts: 0,
+    })
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadWorkoutStatistics = async () => {
+      try {
+        const [historyResponse, programsResponse] =
+          await Promise.all([
+            getMyWorkoutHistory(),
+            getMyPrograms(),
+          ])
+
+        const history =
+          Array.isArray(historyResponse?.history)
+            ? historyResponse.history
+            : []
+
+        const assignments =
+          Array.isArray(programsResponse?.assignments)
+            ? programsResponse.assignments
+            : []
+
+        const currentWeekDates =
+          getCurrentWeekDateKeys()
+
+        const scheduledDates = new Set(
+          assignments
+            .map((assignment) =>
+              toLocalDateKey(
+                assignment?.workoutDate,
+              ),
+            )
+            .filter(
+              (date) =>
+                date &&
+                currentWeekDates.has(date),
+            ),
+        )
+
+        const completedScheduledWorkouts =
+          history.filter(
+            (workout) =>
+              workout?.completed === true &&
+              scheduledDates.has(
+                toLocalDateKey(workout?.date),
+              ),
+          )
+
+        if (!cancelled) {
+          setStatistics({
+            currentStreak:
+              calculateCurrentStreak(
+                completedScheduledWorkouts,
+              ),
+            totalWorkouts:
+              completedScheduledWorkouts.length,
+          })
+        }
+      } catch (error) {
+        console.error(
+          "Unable to load workout statistics:",
+          error,
+        )
+
+        if (!cancelled) {
+          setStatistics({
+            currentStreak: 0,
+            totalWorkouts: 0,
+          })
+        }
+      }
+    }
+
+    loadWorkoutStatistics()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const [weightInput, setWeightInput] =
     useState(
@@ -48,11 +173,13 @@ function Progress() {
     )
 
   const fitnessGoal =
-    profile.fitnessGoal
+    normalizeFitnessGoal(
+      profile.fitnessGoal,
+    )
 
   const goalLabel =
     getFitnessGoalLabel(
-      fitnessGoal,
+      profile.fitnessGoal,
     )
 
   const weightDifference =
@@ -163,11 +290,15 @@ function Progress() {
 
               <div className="text-right">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-black/50">
-                  Target
+                  {fitnessGoal === "keep_fit"
+                    ? "Goal"
+                    : "Target"}
                 </p>
 
                 <p className="mt-1 text-xl font-black">
-                  {progress.targetWeight} kg
+                  {fitnessGoal === "keep_fit"
+                    ? "Maintain"
+                    : `${progress.targetWeight} kg`}
                 </p>
               </div>
             </div>
@@ -187,7 +318,9 @@ function Progress() {
               </span>
 
               <span>
-                {remainingWeight} kg remaining
+                {fitnessGoal === "keep_fit"
+                  ? "Fitness maintained"
+                  : `${remainingWeight} kg remaining`}
               </span>
             </div>
           </div>
@@ -387,10 +520,113 @@ function BottomNavigation() {
   )
 }
 
+function getCurrentWeekDateKeys() {
+  const today = new Date()
+  const day = today.getDay()
+  const mondayOffset =
+    day === 0 ? -6 : 1 - day
+
+  const monday = new Date(today)
+  monday.setDate(
+    today.getDate() + mondayOffset,
+  )
+  monday.setHours(0, 0, 0, 0)
+
+  const dates = new Set()
+
+  for (let index = 0; index < 7; index += 1) {
+    const date = new Date(monday)
+    date.setDate(
+      monday.getDate() + index,
+    )
+    dates.add(toLocalDateKey(date))
+  }
+
+  return dates
+}
+
+function toLocalDateKey(value) {
+  if (!value) return ""
+
+  if (typeof value === "string") {
+    const match = value.match(
+      /^(\d{4}-\d{2}-\d{2})/,
+    )
+
+    if (match) return match[1]
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1,
+  ).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`
+}
+
+function calculateCurrentStreak(workouts) {
+  if (!Array.isArray(workouts) || workouts.length === 0) {
+    return 0
+  }
+
+  const dates = [
+    ...new Set(
+      workouts
+        .filter((workout) => workout?.completed)
+        .map((workout) => toLocalDateKey(workout?.date))
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => b.localeCompare(a))
+
+  if (dates.length === 0) {
+    return 0
+  }
+
+  let streak = 1
+  let previousDate = new Date(
+    `${dates[0]}T00:00:00`,
+  )
+
+  for (let index = 1; index < dates.length; index += 1) {
+    const currentDate = new Date(
+      `${dates[index]}T00:00:00`,
+    )
+
+    const difference = Math.round(
+      (previousDate - currentDate) / 86400000,
+    )
+
+    if (difference !== 1) {
+      break
+    }
+
+    streak += 1
+    previousDate = currentDate
+  }
+
+  return streak
+}
+
+function startOfDay(date) {
+  const result = new Date(date)
+  result.setHours(0, 0, 0, 0)
+  return result
+}
+
 function calculateProgressPercentage(
   progress,
   fitnessGoal,
 ) {
+  const normalizedGoal =
+    normalizeFitnessGoal(
+      fitnessGoal,
+    )
+
   const starting =
     Number(progress.startingWeight)
 
@@ -409,14 +645,14 @@ function calculateProgressPercentage(
   }
 
   if (
-    fitnessGoal ===
+    normalizedGoal ===
     "keep_fit"
   ) {
     return 100
   }
 
   if (
-    fitnessGoal ===
+    normalizedGoal ===
     "become_trainer"
   ) {
     return Math.min(
@@ -466,6 +702,11 @@ function calculateProgressPercentage(
 function getProgressMessage(
   fitnessGoal,
 ) {
+  const normalizedGoal =
+    normalizeFitnessGoal(
+      fitnessGoal,
+    )
+
   const messages = {
     lose_weight:
       "Stay focused on your goal.",
@@ -478,7 +719,7 @@ function getProgressMessage(
   }
 
   return (
-    messages[fitnessGoal] ||
+    messages[normalizedGoal] ||
     messages.keep_fit
   )
 }

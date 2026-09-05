@@ -21,10 +21,6 @@ import TodayWorkoutCard from "../components/TodayWorkoutCard"
 import getTodayWorkout from "../utils/getTodayWorkout"
 
 import {
-  getWorkoutStatistics,
-} from "../utils/workoutStorage"
-
-import {
   useAuth,
 } from "../context/AuthContext.jsx"
 
@@ -32,6 +28,8 @@ import {
   buildMediaUrl,
   getMyProfile,
   getMySubscription,
+  getMyWorkoutHistory,
+  getMyPrograms,
 } from "../api/api.js"
 
 function Home() {
@@ -128,43 +126,19 @@ function Home() {
           result,
         )
 
-        // Home must only display a workout assigned to today's exact calendar date.
-        // This prevents a future assignment (for example Thursday) from appearing
-        // on Home when today is Wednesday.
-        const now = new Date()
-        const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
-        const resultDate = String(
-          result?.date ||
-          result?.workout?.workoutDate ||
-          result?.assignment?.workoutDate ||
-          "",
-        ).slice(0, 10)
-
-        if (result?.hasWorkout && resultDate !== todayKey) {
-          console.warn(
-            "Ignoring non-today workout on Home:",
-            { resultDate, todayKey },
-          )
-
-          setTodayWorkout({
-            hasWorkout: false,
-            date: todayKey,
-            day: now.toLocaleDateString("en-US", { weekday: "long" }),
-            workout: null,
-            workoutType: "rest",
-            title: "Rest Day",
-            description: "No workout has been assigned for today.",
-            startTime: "",
-            endTime: "",
-            location: "CGF Gym",
-            duration: "",
-            trainerAssigned: false,
-          })
-        } else {
-          setTodayWorkout(
-            result,
-          )
-        }
+        /*
+        |--------------------------------------------------------------------------
+        | getTodayWorkout already resolves the member's assignment using the
+        | exact local calendar date. Do not re-parse result.date here.
+        |
+        | The backend date is serialized as an ISO timestamp. Re-parsing that
+        | timestamp on the browser can make a valid today's assignment appear
+        | to belong to yesterday in a different timezone.
+        |--------------------------------------------------------------------------
+        */
+        setTodayWorkout(
+          result,
+        )
       } catch (error) {
         console.error(
           "Unable to load today's workout:",
@@ -215,7 +189,7 @@ function Home() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [userId])
 
   /*
   |--------------------------------------------------------------------------
@@ -325,34 +299,92 @@ function Home() {
   */
 
   useEffect(() => {
+    let mounted = true
+
     if (!userId) {
       setStatistics({
         currentStreak: 0,
         totalWorkouts: 0,
       })
-      return
+      return () => {
+        mounted = false
+      }
     }
 
-    try {
-      const stored =
-        getWorkoutStatistics()
+    const loadStatistics = async () => {
+      try {
+        const [historyResponse, programsResponse] =
+          await Promise.all([
+            getMyWorkoutHistory(),
+            getMyPrograms(),
+          ])
 
-      setStatistics({
-        currentStreak:
-          Number(
-            stored?.currentStreak,
-          ) || 0,
+        const history =
+          Array.isArray(historyResponse?.history)
+            ? historyResponse.history
+            : []
 
-        totalWorkouts:
-          Number(
-            stored?.totalWorkouts,
-          ) || 0,
-      })
-    } catch (error) {
-      console.error(
-        "Unable to load statistics:",
-        error,
-      )
+        const assignments =
+          Array.isArray(programsResponse?.assignments)
+            ? programsResponse.assignments
+            : []
+
+        const currentWeekDates =
+          getCurrentWeekDateKeys()
+
+        const scheduledDates = new Set(
+          assignments
+            .map((assignment) =>
+              toLocalDateKey(
+                assignment?.workoutDate,
+              ),
+            )
+            .filter(
+              (date) =>
+                date &&
+                currentWeekDates.has(date),
+            ),
+        )
+
+        const completedScheduledWorkouts =
+          history.filter(
+            (workout) =>
+              workout?.completed === true &&
+              scheduledDates.has(
+                toLocalDateKey(workout?.date),
+              ),
+          )
+
+        if (!mounted) return
+
+        setStatistics({
+          currentStreak:
+            calculateCurrentStreak(
+              completedScheduledWorkouts,
+            ),
+
+          totalWorkouts:
+            completedScheduledWorkouts.length,
+        })
+      } catch (error) {
+        console.error(
+          "Unable to load workout statistics:",
+          error,
+        )
+
+        if (mounted) {
+          setStatistics({
+            currentStreak: 0,
+            totalWorkouts: 0,
+          })
+        }
+      }
+    }
+
+    loadStatistics()
+
+    return () => {
+      mounted = false
     }
   }, [userId])
 
@@ -775,6 +807,48 @@ function Home() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
+        {/* Attendance */}
+        {/* ---------------------------------------------------------------- */}
+
+        <section className="mt-6 rounded-3xl border border-lime-400/20 bg-lime-400/5 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-lime-400">
+                Attendance
+              </p>
+
+              <h2 className="mt-1 text-lg font-black">
+                Attendance Calendar
+              </h2>
+
+              <p className="mt-2 text-xs leading-5 text-gray-500">
+                View your yearly attendance and completed workout days.
+              </p>
+            </div>
+
+            <CalendarDays
+              size={20}
+              className="text-lime-400"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                "/attendance",
+              )
+            }
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-400 px-5 py-3 text-xs font-black text-black transition hover:bg-lime-300"
+          >
+            VIEW ATTENDANCE
+            <ArrowRight
+              size={14}
+            />
+          </button>
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
         {/* Weekly training */}
         {/* ---------------------------------------------------------------- */}
 
@@ -864,6 +938,92 @@ function Home() {
       <BottomNavigation />
     </div>
   )
+}
+
+function getCurrentWeekDateKeys() {
+  const today = new Date()
+  const day = today.getDay()
+  const mondayOffset = day === 0 ? -6 : 1 - day
+  const monday = new Date(today)
+
+  monday.setDate(
+    today.getDate() + mondayOffset,
+  )
+  monday.setHours(0, 0, 0, 0)
+
+  const dates = new Set()
+
+  for (let index = 0; index < 7; index += 1) {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    dates.add(toLocalDateKey(date))
+  }
+
+  return dates
+}
+
+function toLocalDateKey(value) {
+  if (!value) return ""
+
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
+    if (match) return match[1]
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1,
+  ).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`
+}
+
+function calculateCurrentStreak(history) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return 0
+  }
+
+  const completedDates = [
+    ...new Set(
+      history
+        .filter((workout) => workout?.completed)
+        .map((workout) => toLocalDateKey(workout?.date))
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => b.localeCompare(a))
+
+  if (completedDates.length === 0) {
+    return 0
+  }
+
+  let streak = 1
+  let previousDate = new Date(
+    `${completedDates[0]}T00:00:00`,
+  )
+
+  for (let index = 1; index < completedDates.length; index += 1) {
+    const currentDate = new Date(
+      `${completedDates[index]}T00:00:00`,
+    )
+
+    const difference = Math.round(
+      (previousDate - currentDate) / 86400000,
+    )
+
+    if (difference !== 1) {
+      break
+    }
+
+    streak += 1
+    previousDate = currentDate
+  }
+
+  return streak
 }
 
 function formatWorkoutDuration(totalSeconds) {

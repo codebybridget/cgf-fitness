@@ -21,6 +21,7 @@ import {
 import {
   createProgram,
   deleteProgram,
+  getExercises,
   getPrograms,
   updateProgram,
 } from "../../api/api.js"
@@ -75,6 +76,11 @@ function Programs() {
   ] = useState([])
 
   const [
+    exerciseLibrary,
+    setExerciseLibrary,
+  ] = useState([])
+
+  const [
     selectedProgramId,
     setSelectedProgramId,
   ] = useState("")
@@ -111,15 +117,33 @@ function Programs() {
         setLoading(true)
         setError("")
 
-        const response =
-          await getPrograms()
+        const [
+          programsResponse,
+          exercisesResponse,
+        ] = await Promise.all([
+          getPrograms(),
+          getExercises({
+            active: true,
+          }),
+        ])
 
         const loadedPrograms =
           Array.isArray(
-            response?.programs,
+            programsResponse?.programs,
           )
-            ? response.programs
+            ? programsResponse.programs
             : []
+
+        const loadedExercises =
+          Array.isArray(
+            exercisesResponse?.exercises,
+          )
+            ? exercisesResponse.exercises
+            : []
+
+        setExerciseLibrary(
+          loadedExercises,
+        )
 
         const activePrograms =
           loadedPrograms.filter(
@@ -903,39 +927,50 @@ function Programs() {
                       (
                         exercise,
                         index,
-                      ) => (
-                        <ProgramExercise
-                          key={
-                            getExerciseId(
-                              exercise,
-                            ) ||
-                            index
-                          }
-                          exercise={
-                            exercise
-                          }
-                          index={
-                            index
-                          }
-                          onUpdate={(
-                            changes,
-                          ) =>
-                            handleUpdateExercise(
+                      ) => {
+                        const exerciseDetails =
+                          findExerciseDetails(
+                            exercise,
+                            exerciseLibrary,
+                          )
+
+                        return (
+                          <ProgramExercise
+                            key={
                               getExerciseId(
                                 exercise,
-                              ),
+                              ) ||
+                              index
+                            }
+                            exercise={
+                              exercise
+                            }
+                            exerciseDetails={
+                              exerciseDetails
+                            }
+                            index={
+                              index
+                            }
+                            onUpdate={(
                               changes,
-                            )
-                          }
-                          onRemove={() =>
-                            handleRemoveExercise(
-                              getExerciseId(
-                                exercise,
-                              ),
-                            )
-                          }
-                        />
-                      ),
+                            ) =>
+                              handleUpdateExercise(
+                                getExerciseId(
+                                  exercise,
+                                ),
+                                changes,
+                              )
+                            }
+                            onRemove={() =>
+                              handleRemoveExercise(
+                                getExerciseId(
+                                  exercise,
+                                ),
+                              )
+                            }
+                          />
+                        )
+                      },
                     )
                   )}
 
@@ -1005,14 +1040,54 @@ function Programs() {
 
 function ProgramExercise({
   exercise,
+  exerciseDetails,
   index,
   onUpdate,
   onRemove,
 }) {
+  const details =
+    exerciseDetails || {}
+
+  const exerciseName =
+    details.name ||
+    exercise?.name ||
+    "Unnamed Exercise"
+
+  const category =
+    details.category ||
+    exercise?.category ||
+    exercise?.workoutType ||
+    "Exercise"
+
+  const muscleGroup =
+    details.muscleGroup ||
+    exercise?.muscleGroup ||
+    "Muscle group"
+
+  const equipment =
+    details.equipment ??
+    exercise?.equipment
+
+  const equipmentText =
+    formatEquipment(
+      equipment,
+    )
+
+  const imageUrl =
+    details.imageUrl ||
+    details.image?.url ||
+    details.image ||
+    exercise?.imageUrl ||
+    exercise?.image?.url ||
+    exercise?.image ||
+    ""
+
   const isTabata =
     String(
-      exercise.category ||
-        exercise.workoutType ||
+      details.category ||
+        details.workoutType ||
+        exercise?.category ||
+        exercise?.workoutType ||
         "",
     ).toLowerCase() ===
     "tabata"
@@ -1022,13 +1097,19 @@ function ProgramExercise({
 
       <div className="flex items-start gap-4">
 
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-gray-600">
-
-          <GripVertical
-            size={18}
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={exerciseName}
+            className="h-16 w-16 shrink-0 rounded-2xl object-cover"
           />
-
-        </div>
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-black text-gray-600">
+            <GripVertical
+              size={18}
+            />
+          </div>
+        )}
 
         <div className="min-w-0 flex-1">
 
@@ -1039,29 +1120,17 @@ function ProgramExercise({
             </span>
 
             <span className="rounded-full bg-lime-400/10 px-2 py-1 text-[9px] font-black uppercase text-lime-400">
-              {exercise.category ||
-                "Exercise"}
+              {category}
             </span>
 
           </div>
 
           <h3 className="mt-1 text-base font-black">
-            {exercise.name ||
-              "Unnamed Exercise"}
+            {exerciseName}
           </h3>
 
           <p className="mt-1 text-xs text-gray-600">
-            {exercise.muscleGroup ||
-              "Muscle group"}{" "}
-            ·{" "}
-            {Array.isArray(
-              exercise.equipment,
-            )
-              ? exercise.equipment.join(
-                  ", ",
-                )
-              : exercise.equipment ||
-                "No equipment"}
+            {muscleGroup} · {equipmentText}
           </p>
 
         </div>
@@ -1072,14 +1141,13 @@ function ProgramExercise({
             onRemove
           }
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-400/10 text-red-400"
-          aria-label={`Remove ${
-            exercise.name ||
-            "exercise"
-          }`}
+          aria-label={`Remove ${exerciseName}`}
         >
+
           <Trash2
             size={15}
           />
+
         </button>
 
       </div>
@@ -1397,6 +1465,96 @@ function getProgramId(
     program?._id ||
     program?.id ||
     ""
+  )
+}
+
+function formatEquipment(
+  equipment,
+) {
+  if (
+    Array.isArray(equipment)
+  ) {
+    return equipment
+      .map((item) =>
+        String(item)
+          .replace(/^["\\]+|["\\]+$/g, "")
+          .trim(),
+      )
+      .filter(Boolean)
+      .join(", ") || "No equipment"
+  }
+
+  if (
+    equipment === null ||
+    equipment === undefined ||
+    equipment === ""
+  ) {
+    return "No equipment"
+  }
+
+  const value = String(
+    equipment,
+  ).trim()
+
+  try {
+    const parsed =
+      JSON.parse(value)
+
+    if (
+      Array.isArray(parsed)
+    ) {
+      return parsed
+        .map((item) =>
+          String(item)
+            .replace(/^["\\]+|["\\]+$/g, "")
+            .trim(),
+        )
+        .filter(Boolean)
+        .join(", ") || "No equipment"
+    }
+
+    if (
+      typeof parsed ===
+        "string" &&
+      parsed.trim()
+    ) {
+      return parsed
+        .replace(/^["\\]+|["\\]+$/g, "")
+        .trim()
+    }
+  } catch {
+    // Keep the original value if it is not valid JSON.
+  }
+
+  return value
+    .replace(/\\["]/g, '"')
+    .replace(/^\["|\"]$/g, "")
+    .replace(/^["\\]+|["\\]+$/g, "")
+    .trim() || "No equipment"
+}
+
+function findExerciseDetails(
+  programExercise,
+  exerciseLibrary,
+) {
+  const exerciseId =
+    getExerciseId(
+      programExercise,
+    )
+
+  if (!exerciseId) {
+    return null
+  }
+
+  return (
+    exerciseLibrary.find(
+      (exercise) =>
+        String(
+          exercise?._id ||
+            exercise?.id ||
+            "",
+        ) === String(exerciseId),
+    ) || null
   )
 }
 

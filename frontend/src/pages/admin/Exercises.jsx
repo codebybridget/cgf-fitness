@@ -1636,10 +1636,10 @@ export default function Exercises() {
                         alt={
                           exercise.name
                         }
-                        className="h-44 w-full object-cover"
+                        className="h-56 w-full bg-black object-contain"
                       />
                     ) : (
-                      <div className="flex h-44 items-center justify-center bg-slate-900 text-4xl font-black text-slate-700">
+                      <div className="flex h-56 items-center justify-center bg-slate-900 text-4xl font-black text-slate-700">
                         {exercise.name
                           ?.charAt(
                             0,

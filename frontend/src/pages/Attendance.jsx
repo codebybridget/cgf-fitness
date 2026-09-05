@@ -56,34 +56,51 @@ function formatDate(dateKey) {
   })
 }
 
-function getStreaks(attendedDates, scheduledDates) {
-  // A streak is based on scheduled workout days, not calendar days.
-  // Therefore, an unscheduled day (for example Sunday) does not break the streak,
-  // while a scheduled day that was missed does.
-  const scheduled = [...scheduledDates].sort()
-  if (!scheduled.length) return { current: 0, longest: 0 }
+function getStreaks(attendedDates) {
+  // A streak is based only on workouts that were actually completed.
+  // A completed workout on one day followed by a completed workout on the
+  // next calendar day increases the streak. Any gap breaks the streak.
+  const dates = [...new Set(attendedDates)].sort()
 
-  const attended = new Set(attendedDates)
-  let longest = 0
-  let run = 0
-
-  for (const date of scheduled) {
-    if (attended.has(date)) {
-      run += 1
-      longest = Math.max(longest, run)
-    } else {
-      run = 0
-    }
+  if (!dates.length) {
+    return { current: 0, longest: 0 }
   }
 
-  // The current streak ends at the most recent scheduled day that has
-  // already happened. A future scheduled workout must not break the streak.
-  const completedScheduled = scheduled.filter((date) => !isFuture(date))
-  let current = 0
+  let longest = 1
+  let run = 1
 
-  for (let index = completedScheduled.length - 1; index >= 0; index -= 1) {
-    const date = completedScheduled[index]
-    if (!attended.has(date)) break
+  for (let index = 1; index < dates.length; index += 1) {
+    const previousDate = new Date(`${dates[index - 1]}T00:00:00`)
+    const currentDate = new Date(`${dates[index]}T00:00:00`)
+    const difference = Math.round(
+      (currentDate - previousDate) / 86400000,
+    )
+
+    if (difference === 1) {
+      run += 1
+    } else {
+      run = 1
+    }
+
+    longest = Math.max(longest, run)
+  }
+
+  // The current streak is the consecutive run ending on the most
+  // recently completed workout date. Future scheduled workouts do not
+  // affect it because they are not in attendedDates.
+  let current = 1
+
+  for (let index = dates.length - 1; index > 0; index -= 1) {
+    const latestDate = new Date(`${dates[index]}T00:00:00`)
+    const previousDate = new Date(`${dates[index - 1]}T00:00:00`)
+    const difference = Math.round(
+      (latestDate - previousDate) / 86400000,
+    )
+
+    if (difference !== 1) {
+      break
+    }
+
     current += 1
   }
 
@@ -169,12 +186,32 @@ export default function Attendance() {
 
   const attended = useMemo(() => {
     const set = new Set()
-    history.forEach((item) => {
-      const date = normalizeDate(item?.date)
-      if (date && date.startsWith(`${year}-`)) set.add(date)
+    const scheduledDates = new Set()
+
+    assignments.forEach((item) => {
+      if (item?.status === "cancelled") return
+
+      const date = normalizeDate(item?.workoutDate)
+      if (date && date.startsWith(`${year}-`)) {
+        scheduledDates.add(date)
+      }
     })
+
+    history.forEach((item) => {
+      if (item?.completed !== true) return
+
+      const date = normalizeDate(item?.date)
+      if (
+        date &&
+        date.startsWith(`${year}-`) &&
+        scheduledDates.has(date)
+      ) {
+        set.add(date)
+      }
+    })
+
     return set
-  }, [history, year])
+  }, [history, assignments, year])
 
   const scheduled = useMemo(() => {
     const set = new Set()
@@ -192,7 +229,7 @@ export default function Attendance() {
   )
 
   const attendanceRate = scheduled.size ? Math.round((attendedScheduled / scheduled.size) * 100) : 0
-  const streaks = useMemo(() => getStreaks(attended, scheduled), [attended, scheduled])
+  const streaks = useMemo(() => getStreaks(attended), [attended])
   const giftEligible = attendanceRate >= GIFT_ATTENDANCE_TARGET && scheduled.size > 0
 
   if (loading) {

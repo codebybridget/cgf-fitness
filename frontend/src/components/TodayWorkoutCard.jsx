@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   Clock3,
   Dumbbell,
-  MapPin,
   Play,
 } from "lucide-react"
 
@@ -16,18 +15,29 @@ function TodayWorkoutCard({
   const isSunday =
     today.getDay() === 0
 
+  /*
+  |--------------------------------------------------------------------------
+  | NORMALIZE WORKOUT DATA
+  |--------------------------------------------------------------------------
+  | The API/helper may provide the assignment and program at different
+  | levels. Always accept the program if it exists anywhere in the
+  | normalized workout object.
+  */
+
   const assignment =
-    workout?.assignment || null
+    workout?.assignment ||
+    null
 
   const program =
     assignment?.program ||
     workout?.program ||
+    workout?.workout?.program ||
     workout?.workout ||
     null
 
   const hasAssignment =
     Boolean(
-      assignment &&
+      workout?.hasWorkout &&
         program,
     )
 
@@ -82,9 +92,6 @@ function TodayWorkoutCard({
   /*
   |--------------------------------------------------------------------------
   | MONDAY - SATURDAY
-  |
-  | These are TRAINING DAYS.
-  | Never display Rest / Recovery here.
   |--------------------------------------------------------------------------
   */
 
@@ -168,7 +175,9 @@ function TodayWorkoutCard({
     exercises.length
 
   const trainer =
-    assignment?.assignedBy
+    assignment?.assignedBy ||
+    workout?.assignedBy ||
+    null
 
   const trainerName =
     trainer

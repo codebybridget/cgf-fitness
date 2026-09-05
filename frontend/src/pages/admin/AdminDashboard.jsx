@@ -593,7 +593,7 @@ function AdminDashboard() {
                         </div>
                       </div>
 
-                      <div className="w-full sm:max -w-[190px]">
+                      <div className="w-full sm:w-[240px] sm:shrink-0">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <span className="text-[10px] text-gray-600">
                             {percent}% complete

@@ -1114,7 +1114,8 @@ function findAssignmentForDate(
 
         if (
           assignment.status &&
-          assignment.status !== "active"
+          assignment.status !== "active" &&
+          assignment.status !== "completed"
         ) {
           return false
         }
@@ -1192,6 +1193,12 @@ function getScheduleWorkoutStatus(
 
   if (!assignment) {
     return "not_assigned"
+  }
+
+  // A completed assignment must remain visible in the weekly
+  // schedule so the day can continue to show COMPLETED.
+  if (assignment.status === "completed") {
+    return "completed"
   }
 
   if (workoutLog?.completed) {
