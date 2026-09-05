@@ -6,7 +6,7 @@ import {
 import {
   ArrowRight,
   CalendarDays,
-  ClipboardCheck,
+  Clock3,
   Flame,
   Loader2,
   UserRound,
@@ -28,6 +28,12 @@ import {
   useAuth,
 } from "../context/AuthContext.jsx"
 
+import {
+  buildMediaUrl,
+  getMyProfile,
+  getMySubscription,
+} from "../api/api.js"
+
 function Home() {
   const navigate =
     useNavigate()
@@ -35,6 +41,12 @@ function Home() {
   const {
     user,
   } = useAuth()
+
+  const userId =
+    user?._id ||
+    user?.id ||
+    user?.userId ||
+    null
 
   const [
     todayWorkout,
@@ -52,12 +64,29 @@ function Home() {
   ] = useState("")
 
   const [
+    profilePhoto,
+    setProfilePhoto,
+  ] = useState(() =>
+    user?.profilePhoto || "",
+  )
+
+  const [
     statistics,
     setStatistics,
   ] = useState({
     currentStreak: 0,
     totalWorkouts: 0,
   })
+
+  const [
+    subscription,
+    setSubscription,
+  ] = useState(null)
+
+  const [
+    subscriptionLoading,
+    setSubscriptionLoading,
+  ] = useState(true)
 
   /*
   |--------------------------------------------------------------------------
@@ -164,6 +193,15 @@ function Home() {
   useEffect(() => {
     let mounted = true
 
+    if (!userId) {
+      setTodayWorkout(null)
+      setWorkoutLoading(false)
+      setWorkoutError("")
+      return () => {
+        mounted = false
+      }
+    }
+
     const load = async () => {
       if (!mounted) {
         return
@@ -181,11 +219,120 @@ function Home() {
 
   /*
   |--------------------------------------------------------------------------
+  | Load profile photo
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    let mounted = true
+
+    if (!userId) {
+      setTodayWorkout(null)
+      setWorkoutLoading(false)
+      setWorkoutError("")
+      return () => {
+        mounted = false
+      }
+    }
+
+    const loadProfilePhoto = async () => {
+      try {
+        const cachedPhoto = user?.profilePhoto || ""
+
+        if (cachedPhoto && mounted) {
+          setProfilePhoto(buildMediaUrl(cachedPhoto))
+        }
+
+        const response = await getMyProfile()
+        const photo = response?.user?.profilePhoto || cachedPhoto || ""
+
+        if (mounted) {
+          setProfilePhoto(buildMediaUrl(photo))
+        }
+      } catch (error) {
+        console.error(
+          "Unable to load profile photo:",
+          error,
+        )
+      }
+    }
+
+    loadProfilePhoto()
+
+    return () => {
+      mounted = false
+    }
+  }, [user?.profilePhoto])
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | Load subscription
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    let mounted = true
+
+    if (!userId) {
+      setSubscription(null)
+      setSubscriptionLoading(false)
+      return () => {
+        mounted = false
+      }
+    }
+
+    const loadSubscription = async () => {
+      try {
+        setSubscriptionLoading(true)
+
+        const response = await getMySubscription()
+
+        if (mounted) {
+          setSubscription(
+            response?.hasActiveSubscription
+              ? response.subscription
+              : null,
+          )
+        }
+      } catch (error) {
+        console.error(
+          "Unable to load subscription:",
+          error,
+        )
+
+        if (mounted) {
+          setSubscription(null)
+        }
+      } finally {
+        if (mounted) {
+          setSubscriptionLoading(false)
+        }
+      }
+    }
+
+    loadSubscription()
+
+    return () => {
+      mounted = false
+    }
+  }, [userId])
+
+  /*
+  |--------------------------------------------------------------------------
   | Load statistics
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
+    if (!userId) {
+      setStatistics({
+        currentStreak: 0,
+        totalWorkouts: 0,
+      })
+      return
+    }
+
     try {
       const stored =
         getWorkoutStatistics()
@@ -207,7 +354,7 @@ function Home() {
         error,
       )
     }
-  }, [])
+  }, [userId])
 
   /*
   |--------------------------------------------------------------------------
@@ -387,12 +534,20 @@ function Home() {
                 "/profile",
               )
             }
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
+            className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-lime-400/40 bg-white/10 transition hover:bg-white/20"
             aria-label="Open profile"
           >
-            <UserRound
-              size={19}
-            />
+            {profilePhoto ? (
+              <img
+                src={profilePhoto}
+                alt="Profile"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <UserRound
+                size={21}
+              />
+            )}
           </button>
         </div>
       </header>
@@ -474,6 +629,96 @@ function Home() {
         )}
 
         {/* ---------------------------------------------------------------- */}
+        {/* Subscription */}
+        {/* ---------------------------------------------------------------- */}
+
+        <section className="mt-6 rounded-3xl border border-lime-400/20 bg-lime-400/5 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-lime-400">
+                Membership
+              </p>
+
+              <h2 className="mt-1 text-xl font-black">
+                {subscription?.planName ||
+                  subscription?.membershipPlan?.name ||
+                  "No active subscription"}
+              </h2>
+            </div>
+
+            <Clock3
+              size={20}
+              className="text-lime-400"
+            />
+          </div>
+
+          {subscriptionLoading ? (
+            <p className="mt-4 text-xs text-gray-500">
+              Checking membership status...
+            </p>
+          ) : subscription ? (
+            <>
+              <div className="mt-5 flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-wider text-gray-600">
+                    Days remaining
+                  </p>
+
+                  <p className="mt-1 text-3xl font-black">
+                    {Math.max(
+                      0,
+                      Number(subscription.daysRemaining) || 0,
+                    )}
+                  </p>
+                </div>
+
+                <p className="text-xs font-black text-gray-500">
+                  Expires {""}
+                  {subscription.endDate
+                    ? new Date(subscription.endDate).toLocaleDateString()
+                    : "N/A"}
+                </p>
+              </div>
+
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/50">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    Number(subscription.percentageRemaining) <= 20
+                      ? "bg-red-400"
+                      : Number(subscription.percentageRemaining) <= 40
+                        ? "bg-yellow-400"
+                        : "bg-lime-400"
+                  }`}
+                  style={{
+                    width: `${Math.min(100, Math.max(0, Number(subscription.percentageRemaining) || 0))}%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-2 flex items-center justify-between text-[10px] font-bold">
+                <span className="text-gray-600">
+                  {Math.min(100, Math.max(0, Number(subscription.percentageRemaining) || 0))}% remaining
+                </span>
+
+                {Number(subscription.daysRemaining) <= 7 && (
+                  <span className="text-red-400">
+                    Subscription ending soon
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate("/membership-plans")}
+              className="mt-4 w-full rounded-2xl bg-lime-400 px-4 py-3 text-xs font-black text-black"
+            >
+              VIEW MEMBERSHIP PLANS
+            </button>
+          )}
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
         {/* Statistics */}
         {/* ---------------------------------------------------------------- */}
 
@@ -526,33 +771,6 @@ function Home() {
             <p className="mt-1 text-xs text-gray-600">
               Workouts completed
             </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate(
-                "/attendance",
-              )
-            }
-            className="col-span-2 rounded-3xl border border-white/10 bg-white/5 p-5 text-left transition hover:border-lime-400/30"
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-black">
-                <ClipboardCheck size={18} />
-              </div>
-
-              <div>
-                <p className="text-sm font-black text-white">
-                  Attendance
-                </p>
-                <p className="mt-1 text-xs text-gray-600">
-                  View your yearly attendance and gift eligibility.
-                </p>
-              </div>
-
-              <ArrowRight size={16} className="ml-auto text-gray-600" />
-            </div>
           </button>
         </section>
 

@@ -21,12 +21,14 @@ import trainerAssignmentRoutes from "./routes/trainerAssignmentRoutes.js"
 import exerciseRoutes from "./routes/exerciseRoutes.js"
 import programRoutes from "./routes/programRoutes.js"
 import profileRoutes from "./routes/profileRoutes.js"
+import paymentVerificationRoutes from "./routes/paymentVerificationRoutes.js"
 import emergencyContactRoutes from "./routes/emergencyContactRoutes.js"
 import programAssignmentRoutes from "./routes/programAssignmentRoutes.js"
 import workoutRoutes from "./routes/workoutRoutes.js"
 import workoutLogRoutes from "./routes/workoutLogRoutes.js"
 import classScheduleRoutes from "./routes/classScheduleRoutes.js"
 import membershipRoutes from "./routes/membershipRoutes.js"
+import subscriptionRoutes from "./routes/subscriptionRoutes.js"
 import notificationRoutes from "./routes/notificationRoutes.js"
 
 import {
@@ -36,6 +38,7 @@ import {
 import {
   protect,
 } from "./middleware/authMiddleware.js"
+import requireActiveSubscription from "./middleware/requireActiveSubscription.js"
 
 const app = express()
 
@@ -265,6 +268,14 @@ app.use(
   "/api/payments",
   paymentRoutes,
 )
+app.use(
+  "/api/subscriptions",
+  subscriptionRoutes,
+)
+app.use(
+  "/api/payment-verification",
+  paymentVerificationRoutes,
+)
 
 app.use(
   "/api/admin-auth",
@@ -284,6 +295,8 @@ app.use(
 
 app.use(
   "/api/dashboard",
+  protect,
+  requireActiveSubscription,
   dashboardRoutes,
 )
 
@@ -311,6 +324,8 @@ app.use(
 
 app.use(
   "/api/exercises",
+  protect,
+  requireActiveSubscription,
   exerciseRoutes,
 )
 
@@ -322,6 +337,8 @@ app.use(
 
 app.use(
   "/api/programs",
+  protect,
+  requireActiveSubscription,
   programRoutes,
 )
 
@@ -333,6 +350,8 @@ app.use(
 
 app.use(
   "/api/profile",
+  protect,
+  requireActiveSubscription,
   profileRoutes,
 )
 
@@ -349,6 +368,8 @@ app.use(
 
 app.use(
   "/api/emergency-contacts",
+  protect,
+  requireActiveSubscription,
   emergencyContactRoutes,
 )
 
@@ -360,6 +381,8 @@ app.use(
 
 app.use(
   "/api/program-assignments",
+  protect,
+  requireActiveSubscription,
   programAssignmentRoutes,
 )
 
@@ -371,6 +394,8 @@ app.use(
 
 app.use(
   "/api/workouts",
+  protect,
+  requireActiveSubscription,
   workoutRoutes,
 )
 
@@ -382,6 +407,8 @@ app.use(
 
 app.use(
   "/api/workout-logs",
+  protect,
+  requireActiveSubscription,
   workoutLogRoutes,
 )
 
@@ -393,6 +420,8 @@ app.use(
 
 app.use(
   "/api/class-schedule",
+  protect,
+  requireActiveSubscription,
   classScheduleRoutes,
 )
 
@@ -405,6 +434,7 @@ app.use(
 app.use(
   "/api/notifications",
   protect,
+  requireActiveSubscription,
   notificationRoutes,
 )
 

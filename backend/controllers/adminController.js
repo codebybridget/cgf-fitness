@@ -1,5 +1,6 @@
 import mongoose from "mongoose"
 import User from "../models/User.js"
+import Subscription from "../models/Subscription.js"
 
 /*
 |--------------------------------------------------------------------------
@@ -76,13 +77,109 @@ const getMembers = async (
           createdAt: -1,
         })
 
+    const memberIds = members.map(
+      (member) => member._id,
+    )
+
+    const subscriptions =
+      memberIds.length > 0
+        ? await Subscription.find({
+            user: {
+              $in: memberIds,
+            },
+            paymentStatus: "paid",
+          })
+            .populate(
+              "membershipPlan",
+              "name durationDays price currency features",
+            )
+            .sort({
+              endDate: -1,
+              createdAt: -1,
+            })
+        : []
+
+    const now = new Date()
+    const subscriptionByUser = new Map()
+
+    for (const subscription of subscriptions) {
+      const userId = String(
+        subscription.user,
+      )
+
+      if (subscription.endDate) {
+        const endTime = new Date(
+          subscription.endDate,
+        ).getTime()
+
+        const startTime = subscription.startDate
+          ? new Date(subscription.startDate).getTime()
+          : endTime
+
+        const totalDuration = Math.max(
+          1,
+          endTime - startTime,
+        )
+        const remainingDuration = Math.max(
+          0,
+          endTime - now.getTime(),
+        )
+
+        const daysRemaining =
+          Math.max(
+            0,
+            Math.ceil(
+              remainingDuration /
+                (1000 * 60 * 60 * 24),
+            ),
+          )
+
+        const percentageRemaining =
+          Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round(
+                (remainingDuration /
+                  totalDuration) *
+                  100,
+              ),
+            ),
+          )
+
+        subscription.status =
+          endTime > now.getTime()
+            ? "active"
+            : "expired"
+
+        subscriptionByUser.set(
+          userId,
+          {
+            ...subscription.toObject(),
+            daysRemaining,
+            percentageRemaining,
+          },
+        )
+      }
+    }
+
+    const membersWithSubscriptions =
+      members.map((member) => ({
+        ...member.toObject(),
+        subscription:
+          subscriptionByUser.get(
+            String(member._id),
+          ) || null,
+      }))
+
     return res.status(200).json({
       success: true,
 
       count:
-        members.length,
+        membersWithSubscriptions.length,
 
-      members,
+      members:
+        membersWithSubscriptions,
     })
   } catch (error) {
     console.error(

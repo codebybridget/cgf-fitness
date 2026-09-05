@@ -109,6 +109,20 @@ function WeeklySchedule() {
                   return [item.day, null]
                 }
 
+                // Only request a workout log when a workout is actually
+                // assigned to this exact calendar date. The backend returns
+                // 404 when no assignment exists, so avoiding the request keeps
+                // the weekly schedule clean and removes expected 404s.
+                const assignmentForDate =
+                  findAssignmentForDate(
+                    assignmentList,
+                    targetDate,
+                  )
+
+                if (!assignmentForDate) {
+                  return [item.day, null]
+                }
+
                 try {
                   const logResponse =
                     await api.get(
@@ -132,7 +146,8 @@ function WeeklySchedule() {
                     log,
                   ]
                 } catch (logError) {
-                  // A 404 simply means no workout has been logged for that day yet.
+                  // A 404 can still occur if the assignment changes between
+                  // the assignment request and the workout-log request.
                   if (
                     logError?.response?.status !==
                     404
@@ -326,11 +341,13 @@ function WeeklySchedule() {
           </section>
         )}
 
-        {/* -------------------------------------------------------------- */}
-        {/* Days */}
-        {/* -------------------------------------------------------------- */}
+        {!loading && (
+          <>
+            {/* -------------------------------------------------------------- */}
+            {/* Days */}
+            {/* -------------------------------------------------------------- */}
 
-        <section className="mt-5">
+            <section className="mt-5">
           <div className="grid grid-cols-4 gap-2">
             {schedule
               .slice(0, 4)
@@ -427,6 +444,8 @@ function WeeklySchedule() {
             )}
           </div>
         </section>
+          </>
+        )}
       </main>
 
       <BottomNavigation />

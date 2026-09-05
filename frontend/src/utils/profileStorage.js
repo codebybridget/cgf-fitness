@@ -1,5 +1,5 @@
-const PROFILE_STORAGE_KEY =
-  "cgf_member_profile"
+const STORAGE_PREFIX = "cgf_member_profile"
+const LEGACY_STORAGE_KEY = "cgf_member_profile"
 
 const defaultProfile = {
   fullName: "CGF Member",
@@ -22,94 +22,94 @@ const fitnessGoals = {
   lose_weight: "Lose Weight",
   keep_fit: "Keep Fit",
   gain_weight: "Gain Weight",
-  become_trainer:
-    "Train to Become a Trainer",
+  become_trainer: "Train to Become a Trainer",
+}
+
+function getCurrentUserId() {
+  try {
+    const storedUser = localStorage.getItem("user")
+    if (!storedUser) return null
+
+    const user = JSON.parse(storedUser)
+    return user?._id || user?.id || user?.userId || null
+  } catch (error) {
+    console.error("Unable to determine current user:", error)
+    return null
+  }
+}
+
+function getStorageKey(userId = getCurrentUserId()) {
+  return userId ? `${STORAGE_PREFIX}:${userId}` : null
+}
+
+function createDefaultProfile() {
+  return {
+    ...defaultProfile,
+    emergencyContact: {
+      ...defaultProfile.emergencyContact,
+    },
+  }
 }
 
 function getProfile() {
+  const storageKey = getStorageKey()
+  if (!storageKey) return createDefaultProfile()
+
   try {
-    const stored =
-      localStorage.getItem(
-        PROFILE_STORAGE_KEY,
-      )
+    const stored = localStorage.getItem(storageKey)
+    if (!stored) return createDefaultProfile()
 
-    if (!stored) {
-      return {
-        ...defaultProfile,
-        emergencyContact: {
-          ...defaultProfile.emergencyContact,
-        },
-      }
-    }
-
-    const parsed =
-      JSON.parse(stored)
+    const parsed = JSON.parse(stored)
 
     return {
-      ...defaultProfile,
+      ...createDefaultProfile(),
       ...parsed,
       emergencyContact: {
         ...defaultProfile.emergencyContact,
-        ...(parsed.emergencyContact ||
-          {}),
+        ...(parsed.emergencyContact || {}),
       },
     }
   } catch (error) {
-    console.error(
-      "Unable to load member profile:",
-      error,
-    )
-
-    return {
-      ...defaultProfile,
-      emergencyContact: {
-        ...defaultProfile.emergencyContact,
-      },
-    }
+    console.error("Unable to load member profile:", error)
+    return createDefaultProfile()
   }
 }
 
 function saveProfile(profile) {
-  localStorage.setItem(
-    PROFILE_STORAGE_KEY,
-    JSON.stringify(profile),
-  )
+  const storageKey = getStorageKey()
+  if (!storageKey) return profile
 
+  localStorage.setItem(storageKey, JSON.stringify(profile))
   return profile
 }
 
 function updateProfile(changes) {
-  const currentProfile =
-    getProfile()
+  const currentProfile = getProfile()
 
   const updatedProfile = {
     ...currentProfile,
     ...changes,
     emergencyContact: {
       ...currentProfile.emergencyContact,
-      ...(changes.emergencyContact ||
-        {}),
+      ...(changes.emergencyContact || {}),
     },
   }
 
-  return saveProfile(
-    updatedProfile,
-  )
+  return saveProfile(updatedProfile)
 }
 
-function getFitnessGoalLabel(
-  goal,
-) {
-  return (
-    fitnessGoals[goal] ||
-    "Keep Fit"
-  )
+function getFitnessGoalLabel(goal) {
+  return fitnessGoals[goal] || "Keep Fit"
 }
 
 function getFitnessGoals() {
-  return {
-    ...fitnessGoals,
-  }
+  return { ...fitnessGoals }
+}
+
+function clearProfileStorage() {
+  const storageKey = getStorageKey()
+  if (storageKey) localStorage.removeItem(storageKey)
+  localStorage.removeItem(LEGACY_STORAGE_KEY)
 }
 
 export {
@@ -118,4 +118,5 @@ export {
   updateProfile,
   getFitnessGoalLabel,
   getFitnessGoals,
+  clearProfileStorage,
 }

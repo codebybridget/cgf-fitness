@@ -2,6 +2,7 @@ import axios from "axios"
 
 import User from "../models/User.js"
 import MembershipPlan from "../models/MembershipPlan.js"
+import Payment from "../models/Payment.js"
 
 
 /*
@@ -116,12 +117,6 @@ export const initializePayment = async (
     |--------------------------------------------------------------------------
     | Validate Price
     |--------------------------------------------------------------------------
-    |
-    | We intentionally take the price from MongoDB.
-    |
-    | The frontend must NOT be trusted to tell the backend
-    | how much the customer should pay.
-    |
     */
 
     const price =
@@ -148,13 +143,10 @@ export const initializePayment = async (
     | Paystack Amount
     |--------------------------------------------------------------------------
     |
-    | Paystack expects the amount in the currency subunit.
-    |
-    | NGN:
+    | Paystack expects NGN amounts in kobo.
     |
     | ₦25,000 = 2,500,000 kobo
     |
-    |--------------------------------------------------------------------------
     */
 
     const amount =
@@ -276,6 +268,83 @@ export const initializePayment = async (
     const paymentData =
       response.data.data
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Create Pending Payment
+    |--------------------------------------------------------------------------
+    |
+    | The payment is NOT successful yet.
+    |
+    | Paystack has only initialized the transaction.
+    | We will verify the transaction in the next step.
+    |
+    */
+
+    const existingPayment =
+      await Payment.findOne({
+        reference:
+          paymentData.reference,
+      })
+
+
+    if (!existingPayment) {
+      await Payment.create({
+        user:
+          user._id,
+
+        membershipPlan:
+          plan._id,
+
+        amount:
+          price,
+
+        currency:
+          plan.currency ||
+          "NGN",
+
+        reference:
+          paymentData.reference,
+
+        status:
+          "pending",
+
+        customerEmail:
+          email,
+
+        customerName:
+          `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+
+        metadata:
+          {
+            userId:
+              String(
+                user._id,
+              ),
+
+            planId:
+              String(
+                plan._id,
+              ),
+
+            planName:
+              plan.name,
+
+            durationDays:
+              plan.durationDays,
+
+            paystackAccessCode:
+              paymentData.access_code,
+          },
+      })
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Return Payment Information
+    |--------------------------------------------------------------------------
+    */
 
     return res.status(200).json({
       success: true,

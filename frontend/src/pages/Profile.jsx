@@ -9,6 +9,8 @@ import {
   Phone,
   Save,
   ShieldAlert,
+  Sun,
+  Moon,
   UserRound,
 } from "lucide-react"
 
@@ -24,6 +26,10 @@ import {
 import {
   useAuth,
 } from "../context/AuthContext.jsx"
+
+import {
+  useTheme,
+} from "../context/ThemeContext.jsx"
 
 import {
   getProfile,
@@ -309,6 +315,11 @@ function Profile() {
     logout,
   } = useAuth()
 
+  const {
+    theme,
+    toggleTheme,
+  } = useTheme()
+
   const [
     profile,
     setProfile,
@@ -359,8 +370,8 @@ function Profile() {
   ] = useState(false)
 
   const [
-    showLogoutConfirm,
-    setShowLogoutConfirm,
+    showLogoutModal,
+    setShowLogoutModal,
   ] = useState(false)
 
 
@@ -855,12 +866,13 @@ function Profile() {
 
 
   const handleLogout = () => {
-    setShowLogoutConfirm(true)
+    setShowLogoutModal(true)
   }
 
   const confirmLogout = () => {
+    setShowLogoutModal(false)
+
     logout()
-    setShowLogoutConfirm(false)
 
     navigate(
       "/login",
@@ -1014,9 +1026,70 @@ function Profile() {
             }
           >
 
+            {/* APPEARANCE */}
+
+            <section className="mt-5 rounded-3xl border border-lime-400/20 bg-white/5 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider text-lime-400">
+                    Appearance
+                  </p>
+
+                  <h2 className="mt-1 text-lg font-black">
+                    Light / Dark Mode
+                  </h2>
+
+                  <p className="mt-1 text-xs leading-5 text-gray-500">
+                    Choose how CGF Fitness looks on your device.
+                  </p>
+                </div>
+
+                <div className="flex shrink-0 rounded-2xl border border-white/10 bg-black p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (theme !== "light") {
+                        toggleTheme()
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[10px] font-black transition ${
+                      theme === "light"
+                        ? "bg-white text-black"
+                        : "text-gray-500 hover:text-white"
+                    }`}
+                    aria-label="Use light mode"
+                    aria-pressed={theme === "light"}
+                  >
+                    <Sun size={14} />
+                    LIGHT
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (theme !== "dark") {
+                        toggleTheme()
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[10px] font-black transition ${
+                      theme === "dark"
+                        ? "bg-lime-400 text-black"
+                        : "text-gray-500 hover:text-white"
+                    }`}
+                    aria-label="Use dark mode"
+                    aria-pressed={theme === "dark"}
+                  >
+                    <Moon size={14} />
+                    DARK
+                  </button>
+                </div>
+              </div>
+            </section>
+
+
             {/* PERSONAL INFORMATION */}
 
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <section className="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
 
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-gray-600">
@@ -1519,39 +1592,48 @@ function Profile() {
       </main>
 
 
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-5 backdrop-blur-sm">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="logout-title"
-            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#111] p-6 shadow-2xl"
-          >
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-red-400">
-              <LogOut size={21} />
+      {showLogoutModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-5 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-dialog-title"
+        >
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#111] p-6 shadow-2xl">
+
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/10 text-red-400">
+              <LogOut size={24} />
             </div>
-            <h2 id="logout-title" className="mt-4 text-lg font-black text-white">
-              Log out?
+
+            <h2
+              id="logout-dialog-title"
+              className="mt-5 text-xl font-black text-white"
+            >
+              Log Out?
             </h2>
+
             <p className="mt-2 text-sm leading-6 text-gray-500">
-              Are you sure you want to log out of CGF Fitness?
+              Are you sure you want to log out of your CGF Fitness account?
             </p>
+
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setShowLogoutConfirm(false)}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-black text-gray-300 transition hover:bg-white/10"
+                onClick={() => setShowLogoutModal(false)}
+                className="rounded-2xl border border-white/10 bg-black px-4 py-3.5 text-sm font-black text-gray-400 transition hover:border-white/20 hover:text-white"
               >
                 CANCEL
               </button>
+
               <button
                 type="button"
                 onClick={confirmLogout}
-                className="rounded-2xl bg-red-500 px-4 py-3 text-sm font-black text-white transition hover:bg-red-400"
+                className="rounded-2xl bg-red-500 px-4 py-3.5 text-sm font-black text-white transition hover:bg-red-400"
               >
                 LOG OUT
               </button>
             </div>
+
           </div>
         </div>
       )}

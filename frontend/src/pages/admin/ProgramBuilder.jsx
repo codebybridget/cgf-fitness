@@ -14,6 +14,11 @@ import {
 } from "react"
 
 import {
+  useNavigate,
+  useLocation,
+} from "react-router-dom"
+
+import {
   createProgram,
   deleteProgram,
   getPrograms,
@@ -61,6 +66,9 @@ const workoutTypes = [
 ]
 
 function Programs() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
   const [
     programs,
     setPrograms,
@@ -383,101 +391,62 @@ function Programs() {
   |--------------------------------------------------------------------------
   | Create program
   |--------------------------------------------------------------------------
+  |
+  | A new program must be built from real exercises. The Exercise Library
+  | owns exercise selection, so the NEW PROGRAM button starts that workflow
+  | instead of using a browser prompt.
+  |--------------------------------------------------------------------------
   */
 
   const handleCreateProgram =
-    async () => {
-      const name =
-        window.prompt(
-          "Enter the program name:",
-        )
-
-      if (!name?.trim()) {
-        return
-      }
-
-      const workoutType =
-        window.prompt(
-          "Enter workout type:\nLower Body\nUpper Body\nCrossFit\nTabata",
-          "Lower Body",
-        )
-
-      const normalizedWorkoutType =
-        workoutTypes.includes(
-          workoutType,
-        )
-          ? workoutType
-          : "Lower Body"
-
-      try {
-        setCreating(true)
-        setError("")
-
-        /*
-        |--------------------------------------------------------------------------
-        | Backend requires at least one exercise.
-        |--------------------------------------------------------------------------
-        */
-
-        const response =
-          await createProgram({
-            name:
-              name.trim(),
-
-            description:
-              `${normalizedWorkoutType} training program.`,
-
-            workoutType:
-              normalizedWorkoutType,
-
-            exercises: [],
-
-            isActive: true,
-          })
-
-        const createdProgram =
-          response?.program
-
-        if (
-          !createdProgram
-        ) {
-          throw new Error(
-            "Program was created but no program was returned by the server.",
-          )
-        }
-
-        setPrograms(
-          (current) => [
-            ...current,
-            createdProgram,
-          ],
-        )
-
-        setSelectedProgramId(
-          getProgramId(
-            createdProgram,
-          ),
-        )
-
-        window.alert(
-          "Program created successfully.",
-        )
-      } catch (error) {
-        console.error(
-          "Create program error:",
-          error,
-        )
-
-        setError(
-          error.response?.data
-            ?.message ||
-            error.message ||
-            "Unable to create workout program.",
-        )
-      } finally {
-        setCreating(false)
-      }
+    () => {
+      navigate(
+        "/admin/exercises",
+        {
+          state: {
+            createProgram: true,
+          },
+        },
+      )
     }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Select a program returned from the Exercise Library
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    const createdProgramId =
+      location.state?.createdProgramId
+
+    if (!createdProgramId || loading) {
+      return
+    }
+
+    const exists = programs.some(
+      (program) =>
+        String(getProgramId(program)) ===
+        String(createdProgramId),
+    )
+
+    if (exists) {
+      setSelectedProgramId(
+        String(createdProgramId),
+      )
+    }
+
+    navigate(location.pathname, {
+      replace: true,
+      state: {},
+    })
+  }, [
+    location.pathname,
+    location.state,
+    loading,
+    navigate,
+    programs,
+  ])
 
   /*
   |--------------------------------------------------------------------------

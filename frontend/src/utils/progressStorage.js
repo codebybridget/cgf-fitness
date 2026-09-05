@@ -1,103 +1,85 @@
-const PROGRESS_STORAGE_KEY =
-  "cgf_progress_data"
+const STORAGE_PREFIX = "cgf_progress_data"
+const LEGACY_STORAGE_KEY = "cgf_progress_data"
 
 const defaultProgress = {
-  startingWeight: 78,
-  currentWeight: 76,
+  startingWeight: 0,
+  currentWeight: 0,
   targetWeight: 70,
-  height: 175,
-  weightHistory: [
-    {
-      date: "2026-08-15",
-      weight: 78,
-    },
-    {
-      date: "2026-08-17",
-      weight: 77.5,
-    },
-    {
-      date: "2026-08-19",
-      weight: 77,
-    },
-    {
-      date: "2026-08-21",
-      weight: 76,
-    },
-  ],
+  height: 0,
+  weightHistory: [],
+}
+
+function getCurrentUserId() {
+  try {
+    const storedUser = localStorage.getItem("user")
+    if (!storedUser) return null
+
+    const user = JSON.parse(storedUser)
+    return user?._id || user?.id || user?.userId || null
+  } catch (error) {
+    console.error("Unable to determine current user:", error)
+    return null
+  }
+}
+
+function getStorageKey(userId = getCurrentUserId()) {
+  return userId ? `${STORAGE_PREFIX}:${userId}` : null
+}
+
+function createDefaultProgress() {
+  return {
+    ...defaultProgress,
+    weightHistory: [],
+  }
 }
 
 function getProgressData() {
+  const storageKey = getStorageKey()
+  if (!storageKey) return createDefaultProgress()
+
   try {
-    const storedData =
-      localStorage.getItem(
-        PROGRESS_STORAGE_KEY,
-      )
+    const storedData = localStorage.getItem(storageKey)
+    if (!storedData) return createDefaultProgress()
 
-    if (!storedData) {
-      return defaultProgress
-    }
-
-    const parsedData =
-      JSON.parse(storedData)
+    const parsedData = JSON.parse(storedData)
 
     return {
-      ...defaultProgress,
+      ...createDefaultProgress(),
       ...parsedData,
+      weightHistory: Array.isArray(parsedData?.weightHistory)
+        ? parsedData.weightHistory
+        : [],
     }
   } catch (error) {
-    console.error(
-      "Unable to load progress data:",
-      error,
-    )
-
-    return defaultProgress
+    console.error("Unable to load progress data:", error)
+    return createDefaultProgress()
   }
 }
 
 function saveProgressData(data) {
-  localStorage.setItem(
-    PROGRESS_STORAGE_KEY,
-    JSON.stringify(data),
-  )
+  const storageKey = getStorageKey()
+  if (!storageKey) return data
 
+  localStorage.setItem(storageKey, JSON.stringify(data))
   return data
 }
 
 function addWeightEntry(weight) {
-  const progress =
-    getProgressData()
+  const progress = getProgressData()
+  const numericWeight = Number(weight)
 
-  const numericWeight =
-    Number(weight)
-
-  if (
-    !Number.isFinite(
-      numericWeight,
-    ) ||
-    numericWeight <= 0
-  ) {
+  if (!Number.isFinite(numericWeight) || numericWeight <= 0) {
     return progress
   }
 
-  const today =
-    new Date()
-      .toISOString()
-      .split("T")[0]
-
-  const updatedHistory = [
-    ...(progress.weightHistory || []),
-  ]
-
-  const existingIndex =
-    updatedHistory.findIndex(
-      (entry) =>
-        entry.date === today,
-    )
+  const today = new Date().toISOString().split("T")[0]
+  const updatedHistory = [...(progress.weightHistory || [])]
+  const existingIndex = updatedHistory.findIndex(
+    (entry) => entry.date === today,
+  )
 
   if (existingIndex >= 0) {
-    updatedHistory[
-      existingIndex
-    ] = {
+    updatedHistory[existingIndex] = {
       date: today,
       weight: numericWeight,
     }
@@ -110,19 +92,26 @@ function addWeightEntry(weight) {
 
   const updatedProgress = {
     ...progress,
-    currentWeight:
-      numericWeight,
-    weightHistory:
-      updatedHistory,
+    startingWeight:
+      Number(progress.startingWeight) > 0
+        ? Number(progress.startingWeight)
+        : numericWeight,
+    currentWeight: numericWeight,
+    weightHistory: updatedHistory,
   }
 
-  return saveProgressData(
-    updatedProgress,
-  )
+  return saveProgressData(updatedProgress)
+}
+
+function clearProgressData() {
+  const storageKey = getStorageKey()
+  if (storageKey) localStorage.removeItem(storageKey)
+  localStorage.removeItem(LEGACY_STORAGE_KEY)
 }
 
 export {
   getProgressData,
   saveProgressData,
   addWeightEntry,
+  clearProgressData,
 }

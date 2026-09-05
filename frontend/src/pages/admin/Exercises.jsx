@@ -5,7 +5,13 @@ import {
 } from "react"
 
 import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom"
+
+import {
   createExercise,
+  createProgram,
   deleteExercise,
   getExercises,
   updateExercise,
@@ -31,8 +37,6 @@ const EMPTY_FORM = {
   description: "",
   instructions: "",
   equipment: "",
-  targetGender: ["Male", "Female"],
-  fitnessGoals: ["Keep Fit"],
   difficulty: "Beginner",
   defaultSets: 3,
   defaultReps: "",
@@ -107,20 +111,6 @@ function exerciseToForm(
           )
         : "",
 
-    targetGender:
-      Array.isArray(
-        exercise.targetGender,
-      ) && exercise.targetGender.length
-        ? exercise.targetGender
-        : ["Male", "Female"],
-
-    fitnessGoals:
-      Array.isArray(
-        exercise.fitnessGoals,
-      )
-        ? exercise.fitnessGoals
-        : [],
-
     difficulty:
       exercise.difficulty ||
       "Beginner",
@@ -178,16 +168,6 @@ function buildPayload(
       normalizeArray(
         form.equipment,
       ),
-
-    targetGender:
-      Array.isArray(form.targetGender)
-        ? form.targetGender
-        : [],
-
-    fitnessGoals:
-      Array.isArray(form.fitnessGoals)
-        ? form.fitnessGoals
-        : [],
 
     difficulty:
       form.difficulty,
@@ -298,6 +278,9 @@ function formatFileSize(
 */
 
 export default function Exercises() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
   const [
     exercises,
     setExercises,
@@ -347,6 +330,47 @@ export default function Exercises() {
     editingExercise,
     setEditingExercise,
   ] = useState(null)
+
+  /*
+  |--------------------------------------------------------------------------
+  | Program creation mode
+  |--------------------------------------------------------------------------
+  */
+
+  const createProgramMode =
+    Boolean(
+      location.state?.createProgram,
+    )
+
+  const [
+    selectedProgramExercises,
+    setSelectedProgramExercises,
+  ] = useState([])
+
+  const [
+    showProgramForm,
+    setShowProgramForm,
+  ] = useState(false)
+
+  const [
+    programName,
+    setProgramName,
+  ] = useState("")
+
+  const [
+    programWorkoutType,
+    setProgramWorkoutType,
+  ] = useState("Lower Body")
+
+  const [
+    creatingProgram,
+    setCreatingProgram,
+  ] = useState(false)
+
+  const [
+    programError,
+    setProgramError,
+  ] = useState("")
 
   const [
     form,
@@ -693,32 +717,6 @@ export default function Exercises() {
 
   /*
   |--------------------------------------------------------------------------
-  | Toggle recommendation option
-  |--------------------------------------------------------------------------
-  */
-
-  const handleArrayToggle =
-    (field, value) => {
-      setForm((current) => {
-        const currentValues = Array.isArray(
-          current[field],
-        )
-          ? current[field]
-          : []
-
-        return {
-          ...current,
-          [field]: currentValues.includes(value)
-            ? currentValues.filter(
-                (item) => item !== value,
-              )
-            : [...currentValues, value],
-        }
-      })
-    }
-
-  /*
-  |--------------------------------------------------------------------------
   | Image selection
   |--------------------------------------------------------------------------
   */
@@ -916,20 +914,6 @@ export default function Exercises() {
         formData.append(
           "muscleGroup",
           payload.muscleGroup,
-        )
-
-        formData.append(
-          "targetGender",
-          JSON.stringify(
-            payload.targetGender,
-          ),
-        )
-
-        formData.append(
-          "fitnessGoals",
-          JSON.stringify(
-            payload.fitnessGoals,
-          ),
         )
 
         formData.append(
@@ -1148,6 +1132,199 @@ export default function Exercises() {
 
   /*
   |--------------------------------------------------------------------------
+  | Program creation workflow
+  |--------------------------------------------------------------------------
+  */
+
+  const toggleProgramExercise =
+    (exercise) => {
+      const exerciseId =
+        String(exercise?._id || "")
+
+      if (!exerciseId) {
+        return
+      }
+
+      setProgramError("")
+
+      setSelectedProgramExercises(
+        (current) => {
+          const exists = current.some(
+            (id) => String(id) === exerciseId,
+          )
+
+          if (exists) {
+            return current.filter(
+              (id) =>
+                String(id) !== exerciseId,
+            )
+          }
+
+          return [
+            ...current,
+            exerciseId,
+          ]
+        },
+      )
+    }
+
+  const openProgramForm =
+    () => {
+      if (
+        selectedProgramExercises.length ===
+        0
+      ) {
+        setProgramError(
+          "Select at least one exercise to create the program.",
+        )
+        return
+      }
+
+      setProgramError("")
+      setShowProgramForm(true)
+    }
+
+  const closeProgramForm =
+    () => {
+      if (creatingProgram) {
+        return
+      }
+
+      setShowProgramForm(false)
+    }
+
+  const handleCreateProgram =
+    async () => {
+      if (!programName.trim()) {
+        setProgramError(
+          "Program name is required.",
+        )
+        return
+      }
+
+      if (
+        selectedProgramExercises.length ===
+        0
+      ) {
+        setProgramError(
+          "Select at least one exercise to create the program.",
+        )
+        return
+      }
+
+      try {
+        setCreatingProgram(true)
+        setProgramError("")
+
+        const selectedExercises =
+          selectedProgramExercises
+            .map((id) =>
+              exercises.find(
+                (exercise) =>
+                  String(exercise._id) ===
+                  String(id),
+              ),
+            )
+            .filter(Boolean)
+
+        if (
+          selectedExercises.length === 0
+        ) {
+          throw new Error(
+            "The selected exercises could not be found.",
+          )
+        }
+
+        const response =
+          await createProgram({
+            name: programName.trim(),
+            description: `${programWorkoutType} training program.`,
+            workoutType: programWorkoutType,
+            exercises: selectedExercises.map(
+              (exercise, index) => ({
+                exercise: exercise._id,
+                order: index + 1,
+                sets: Number(
+                  exercise.defaultSets,
+                ) || 3,
+                reps:
+                  exercise.defaultReps ===
+                    null ||
+                  exercise.defaultReps ===
+                    undefined ||
+                  exercise.defaultReps ===
+                    ""
+                    ? null
+                    : Number(
+                        exercise.defaultReps,
+                      ),
+                duration:
+                  exercise.defaultDuration ===
+                    null ||
+                  exercise.defaultDuration ===
+                    undefined ||
+                  exercise.defaultDuration ===
+                    ""
+                    ? null
+                    : Number(
+                        exercise.defaultDuration,
+                      ),
+                rest:
+                  Number(
+                    exercise.defaultRest,
+                  ) || 0,
+                notes: "",
+              }),
+            ),
+            isActive: true,
+          })
+
+        const createdProgram =
+          response?.program
+
+        if (!createdProgram?._id) {
+          throw new Error(
+            response?.message ||
+              "The program could not be created.",
+          )
+        }
+
+        setShowProgramForm(false)
+        setSelectedProgramExercises([])
+        setProgramName("")
+        setProgramWorkoutType(
+          "Lower Body",
+        )
+
+        navigate(
+          "/admin/programs",
+          {
+            replace: true,
+            state: {
+              createdProgramId:
+                createdProgram._id,
+            },
+          },
+        )
+      } catch (error) {
+        console.error(
+          "Create program error:",
+          error,
+        )
+
+        setProgramError(
+          error.response?.data
+            ?.message ||
+            error.message ||
+            "Unable to create workout program.",
+        )
+      } finally {
+        setCreatingProgram(false)
+      }
+    }
+
+  /*
+  |--------------------------------------------------------------------------
   | Deactivate exercise
   |--------------------------------------------------------------------------
   */
@@ -1245,6 +1422,39 @@ export default function Exercises() {
           </button>
 
         </div>
+
+        {createProgramMode && (
+          <div className="mt-6 rounded-2xl border border-lime-400/20 bg-lime-400/10 p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-lime-400">
+                  Create Workout Program
+                </p>
+                <p className="mt-1 text-sm text-gray-300">
+                  Select the exercises you want to include, then continue to create the program.
+                </p>
+                <p className="mt-2 text-xs font-bold text-lime-300">
+                  {selectedProgramExercises.length} exercise{selectedProgramExercises.length === 1 ? "" : "s"} selected
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={openProgramForm}
+                disabled={selectedProgramExercises.length === 0}
+                className="rounded-xl bg-lime-400 px-5 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                CONTINUE TO PROGRAM
+              </button>
+            </div>
+
+            {programError && (
+              <p className="mt-3 text-sm font-bold text-red-300">
+                {programError}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* ================================================================ */}
         {/* MESSAGES                                                         */}
@@ -1531,6 +1741,34 @@ export default function Exercises() {
 
                       <div className="mt-5 flex gap-2">
 
+                        {createProgramMode && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleProgramExercise(
+                                exercise,
+                              )
+                            }
+                            className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                              selectedProgramExercises.some(
+                                (id) =>
+                                  String(id) ===
+                                  String(exercise._id),
+                              )
+                                ? "bg-lime-400 text-black"
+                                : "border border-lime-400/30 text-lime-300 hover:bg-lime-400/10"
+                            }`}
+                          >
+                            {selectedProgramExercises.some(
+                              (id) =>
+                                String(id) ===
+                                String(exercise._id),
+                            )
+                              ? "SELECTED"
+                              : "SELECT"}
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() =>
@@ -1569,6 +1807,91 @@ export default function Exercises() {
         </div>
 
       </div>
+
+      {showProgramForm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-400">
+                  New Workout Program
+                </p>
+                <h2 className="mt-1 text-2xl font-black text-white">
+                  Program Details
+                </h2>
+                <p className="mt-2 text-sm text-slate-500">
+                  {selectedProgramExercises.length} exercise{selectedProgramExercises.length === 1 ? "" : "s"} selected from the library.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeProgramForm}
+                disabled={creatingProgram}
+                className="rounded-xl border border-white/10 px-3 py-2 text-slate-400 hover:bg-white/5 disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
+                  Program Name
+                </label>
+                <input
+                  value={programName}
+                  onChange={(event) =>
+                    setProgramName(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="e.g. Upper Body Beginner"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
+                  Workout Type
+                </label>
+                <select
+                  value={programWorkoutType}
+                  onChange={(event) =>
+                    setProgramWorkoutType(
+                      event.target.value,
+                    )
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-lime-400/50"
+                >
+                  <option value="Lower Body">Lower Body</option>
+                  <option value="Upper Body">Upper Body</option>
+                  <option value="CrossFit">CrossFit</option>
+                  <option value="Tabata">Tabata</option>
+                </select>
+              </div>
+
+              {programError && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm font-bold text-red-300">
+                  {programError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCreateProgram}
+                disabled={creatingProgram}
+                className="w-full rounded-xl bg-yellow-400 px-5 py-3.5 text-sm font-black text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {creatingProgram
+                  ? "CREATING PROGRAM..."
+                  : "CREATE PROGRAM"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ================================================================== */}
       {/* CREATE / EDIT MODAL                                                */}
@@ -1773,75 +2096,6 @@ export default function Exercises() {
                         ),
                       )}
                     </select>
-
-                  </div>
-
-                  {/* Target Gender */}
-
-                  <div>
-
-                    <label className="mb-2 block text-sm font-medium text-slate-300">
-                      Target Gender
-                    </label>
-
-                    <div className="space-y-2 rounded-xl border border-white/10 bg-slate-900 p-3">
-                      {["Male", "Female"].map((gender) => (
-                        <label
-                          key={gender}
-                          className="flex cursor-pointer items-center gap-3 text-sm text-slate-300"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={form.targetGender.includes(gender)}
-                            onChange={() =>
-                              handleArrayToggle(
-                                "targetGender",
-                                gender,
-                              )
-                            }
-                            className="h-4 w-4 rounded border-white/20 bg-slate-800 text-yellow-400 focus:ring-yellow-400"
-                          />
-                          {gender}
-                        </label>
-                      ))}
-                    </div>
-
-                  </div>
-
-                  {/* Fitness Goals */}
-
-                  <div>
-
-                    <label className="mb-2 block text-sm font-medium text-slate-300">
-                      Fitness Goals
-                    </label>
-
-                    <div className="space-y-2 rounded-xl border border-white/10 bg-slate-900 p-3">
-                      {[
-                        "Keep Fit",
-                        "Lose Weight",
-                        "Gain Weight",
-                        "Train to Become a Trainer",
-                      ].map((goal) => (
-                        <label
-                          key={goal}
-                          className="flex cursor-pointer items-center gap-3 text-sm text-slate-300"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={form.fitnessGoals.includes(goal)}
-                            onChange={() =>
-                              handleArrayToggle(
-                                "fitnessGoals",
-                                goal,
-                              )
-                            }
-                            className="h-4 w-4 rounded border-white/20 bg-slate-800 text-yellow-400 focus:ring-yellow-400"
-                          />
-                          {goal}
-                        </label>
-                      ))}
-                    </div>
 
                   </div>
 

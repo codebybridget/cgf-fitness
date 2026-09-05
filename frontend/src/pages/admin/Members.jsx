@@ -1,5 +1,6 @@
 import {
   Activity,
+  CheckCircle2,
   AlertTriangle,
   ChevronRight,
   Mail,
@@ -310,6 +311,20 @@ function Members() {
             }
             icon={ShieldAlert}
           />
+
+          <SummaryCard
+            label="Paid Members"
+            value={
+              members.filter(
+                (member) =>
+                  member.subscription?.paymentStatus ===
+                    "paid" &&
+                  member.subscription?.status ===
+                    "active",
+              ).length
+            }
+            icon={CheckCircle2}
+          />
         </section>
 
         {/* -------------------------------------------------------------- */}
@@ -525,6 +540,47 @@ function MemberCard({
         {goal}
       </p>
 
+      <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[9px] font-black uppercase tracking-wider text-gray-600">
+            Subscription
+          </span>
+
+          <span
+            className={`rounded-full px-2 py-1 text-[8px] font-black ${
+              member.subscription?.status === "active"
+                ? "bg-lime-400/10 text-lime-400"
+                : "bg-white/5 text-gray-600"
+            }`}
+          >
+            {member.subscription?.status === "active"
+              ? "PAID"
+              : "NO ACTIVE PLAN"}
+          </span>
+        </div>
+
+        {member.subscription ? (
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="truncate text-xs font-black text-gray-300">
+              {member.subscription.planName ||
+                member.subscription.membershipPlan?.name ||
+                "Membership"}
+            </p>
+
+            <p className="shrink-0 text-[10px] font-bold text-gray-500">
+              {Math.max(
+                0,
+                Number(member.subscription.daysRemaining) || 0,
+              )} days left
+            </p>
+          </div>
+        ) : (
+          <p className="mt-2 text-[10px] text-gray-600">
+            No paid subscription recorded.
+          </p>
+        )}
+      </div>
+
       <div className="mt-5 space-y-2">
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Mail size={14} />
@@ -710,6 +766,101 @@ function MemberDetails({
                       : "ACTIVATE MEMBER"}
                 </button>
               </div>
+            </DetailSection>
+
+            {/* -------------------------------------------------------- */}
+            {/* Subscription */}
+            {/* -------------------------------------------------------- */}
+
+            <DetailSection title="Subscription & Payment">
+              {member.subscription ? (
+                <div className="rounded-2xl border border-lime-400/20 bg-lime-400/5 p-5">
+                  <DetailGrid>
+                    <Detail
+                      label="Plan"
+                      value={
+                        member.subscription.planName ||
+                        member.subscription.membershipPlan?.name ||
+                        "Not provided"
+                      }
+                    />
+
+                    <Detail
+                      label="Payment Status"
+                      value={
+                        member.subscription.paymentStatus ||
+                        "Unknown"
+                      }
+                    />
+
+                    <Detail
+                      label="Start Date"
+                      value={
+                        member.subscription.startDate
+                          ? new Date(
+                              member.subscription.startDate,
+                            ).toLocaleDateString()
+                          : "Not available"
+                      }
+                    />
+
+                    <Detail
+                      label="Expiry Date"
+                      value={
+                        member.subscription.endDate
+                          ? new Date(
+                              member.subscription.endDate,
+                            ).toLocaleDateString()
+                          : "Not available"
+                      }
+                    />
+
+                    <Detail
+                      label="Days Remaining"
+                      value={`${Math.max(
+                        0,
+                        Number(member.subscription.daysRemaining) || 0,
+                      )} days`}
+                    />
+
+                    <Detail
+                      label="Subscription Status"
+                      value={
+                        member.subscription.status ||
+                        "Unknown"
+                      }
+                    />
+                  </DetailGrid>
+
+                  <div className="mt-5 h-2 overflow-hidden rounded-full bg-black/50">
+                    <div
+                      className={`h-full rounded-full ${
+                        Number(member.subscription.percentageRemaining) <= 20
+                          ? "bg-red-400"
+                          : Number(member.subscription.percentageRemaining) <= 40
+                            ? "bg-yellow-400"
+                            : "bg-lime-400"
+                      }`}
+                      style={{
+                        width: `${Math.min(100, Math.max(0, Number(member.subscription.percentageRemaining) || 0))}%`,
+                      }}
+                    />
+                  </div>
+
+                  <p className="mt-2 text-right text-[10px] font-bold text-gray-600">
+                    {Math.min(100, Math.max(0, Number(member.subscription.percentageRemaining) || 0))}% remaining
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                  <p className="text-sm font-black text-gray-400">
+                    No paid subscription recorded.
+                  </p>
+                  <p className="mt-1 text-xs text-gray-600">
+                    This member has not completed a paid membership activation.
+                  </p>
+                </div>
+              )}
             </DetailSection>
 
             {/* -------------------------------------------------------- */}

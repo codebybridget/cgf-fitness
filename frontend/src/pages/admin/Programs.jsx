@@ -1044,22 +1044,105 @@ function ProgramExercise({
     String(
       exercise.category ||
         exercise.workoutType ||
+        exercise.exercise?.category ||
+        exercise.exercise?.workoutType ||
         "",
     ).toLowerCase() ===
     "tabata"
 
+  const exerciseData =
+    typeof exercise.exercise ===
+    "object"
+      ? exercise.exercise
+      : exercise
+
+  const exerciseName =
+    exercise.name ||
+    exerciseData?.name ||
+    "Unnamed Exercise"
+
+  const imageUrl =
+    exercise.imageUrl ||
+    exerciseData?.imageUrl ||
+    exercise.image?.url ||
+    exerciseData?.image?.url ||
+    exercise.image ||
+    exerciseData?.image ||
+    ""
+
+  const muscleGroup =
+    exercise.muscleGroup ||
+    exerciseData?.muscleGroup ||
+    "Muscle group"
+
+  const equipment =
+    exercise.equipment ??
+    exerciseData?.equipment
+
+  const equipmentText =
+    Array.isArray(equipment)
+      ? equipment.join(", ")
+      : equipment ||
+        "No equipment"
+
   return (
-    <article className="rounded-3xl border border-white/10 bg-white/5 p-5">
+    <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
 
-      <div className="flex items-start gap-4">
+      {/* EXERCISE HEADER */}
 
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-gray-600">
+      <div className="flex items-start gap-4 p-5">
 
-          <GripVertical
-            size={18}
-          />
+        {/* EXERCISE IMAGE */}
+
+        <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-2xl bg-black">
+
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={exerciseName}
+              className="h-full w-full object-cover"
+              onError={(event) => {
+                const image =
+                  event.currentTarget
+
+                image.style.display =
+                  "none"
+
+                const fallback =
+                  image.parentElement?.querySelector(
+                    "[data-program-exercise-image-fallback]",
+                  )
+
+                if (fallback) {
+                  fallback.classList.remove(
+                    "hidden",
+                  )
+                }
+              }}
+            />
+          ) : null}
+
+          <div
+            data-program-exercise-image-fallback
+            className={`${
+              imageUrl
+                ? "hidden "
+                : ""
+            }absolute inset-0 flex flex-col items-center justify-center bg-slate-900`}
+          >
+            <Dumbbell
+              size={28}
+              className="text-gray-600"
+            />
+
+            <span className="mt-1 text-[8px] font-black uppercase tracking-wider text-gray-700">
+              No Image
+            </span>
+          </div>
 
         </div>
+
+        {/* EXERCISE INFORMATION */}
 
         <div className="min-w-0 flex-1">
 
@@ -1071,31 +1154,25 @@ function ProgramExercise({
 
             <span className="rounded-full bg-lime-400/10 px-2 py-1 text-[9px] font-black uppercase text-lime-400">
               {exercise.category ||
+                exerciseData?.category ||
                 "Exercise"}
             </span>
 
           </div>
 
           <h3 className="mt-1 text-base font-black">
-            {exercise.name ||
-              "Unnamed Exercise"}
+            {exerciseName}
           </h3>
 
           <p className="mt-1 text-xs text-gray-600">
-            {exercise.muscleGroup ||
-              "Muscle group"}{" "}
-            ·{" "}
-            {Array.isArray(
-              exercise.equipment,
-            )
-              ? exercise.equipment.join(
-                  ", ",
-                )
-              : exercise.equipment ||
-                "No equipment"}
+            {muscleGroup}
+            {" · "}
+            {equipmentText}
           </p>
 
         </div>
+
+        {/* REMOVE */}
 
         <button
           type="button"
@@ -1103,10 +1180,7 @@ function ProgramExercise({
             onRemove
           }
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-400/10 text-red-400"
-          aria-label={`Remove ${
-            exercise.name ||
-            "exercise"
-          }`}
+          aria-label={`Remove ${exerciseName}`}
         >
           <Trash2
             size={15}
@@ -1115,145 +1189,168 @@ function ProgramExercise({
 
       </div>
 
+      {/* WORKOUT SETTINGS */}
+
       {isTabata ? (
-        <div className="mt-5 grid grid-cols-3 gap-3">
+        <div className="border-t border-white/10 px-5 pb-5">
+          <div className="mt-5 grid grid-cols-3 gap-3">
 
-          <NumberField
-            label="Work Seconds"
+            <NumberField
+              label="Work Seconds"
+              value={
+                exercise.workInterval
+              }
+              onChange={(
+                value,
+              ) =>
+                onUpdate({
+                  workInterval:
+                    Number(
+                      value,
+                    ),
+                })
+              }
+            />
+
+            <NumberField
+              label="Rest Seconds"
+              value={
+                exercise.restInterval
+              }
+              onChange={(
+                value,
+              ) =>
+                onUpdate({
+                  restInterval:
+                    Number(
+                      value,
+                    ),
+                })
+              }
+            />
+
+            <NumberField
+              label="Rounds"
+              value={
+                exercise.rounds
+              }
+              onChange={(
+                value,
+              ) =>
+                onUpdate({
+                  rounds:
+                    Number(
+                      value,
+                    ),
+                })
+              }
+            />
+
+          </div>
+
+          <TextField
+            label="Trainer Notes"
             value={
-              exercise.workInterval
+              exercise.notes
             }
+            placeholder="Optional instructions for members"
             onChange={(
               value,
             ) =>
               onUpdate({
-                workInterval:
-                  Number(
-                    value,
-                  ),
+                notes: value,
               })
             }
           />
-
-          <NumberField
-            label="Rest Seconds"
-            value={
-              exercise.restInterval
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                restInterval:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
-
-          <NumberField
-            label="Rounds"
-            value={
-              exercise.rounds
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                rounds:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
-
         </div>
       ) : (
-        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="border-t border-white/10 px-5 pb-5">
 
-          <NumberField
-            label="Sets"
-            value={
-              exercise.sets
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                sets:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
+          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
 
-          <NumberField
-            label="Reps"
-            value={
-              exercise.reps
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                reps:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
+            <NumberField
+              label="Sets"
+              value={
+                exercise.sets
+              }
+              onChange={(
+                value,
+              ) =>
+                onUpdate({
+                  sets:
+                    Number(
+                      value,
+                    ),
+                })
+              }
+            />
+
+            <NumberField
+              label="Reps"
+              value={
+                exercise.reps
+              }
+              onChange={(
+                value,
+              ) =>
+                onUpdate({
+                  reps:
+                    Number(
+                      value,
+                    ),
+                })
+              }
+            />
+
+            <TextField
+              label="Weight"
+              value={
+                exercise.weight
+              }
+              placeholder="e.g. 20 kg"
+              onChange={(
+                value,
+              ) =>
+                onUpdate({
+                  weight: value,
+                })
+              }
+            />
+
+            <TextField
+              label="Rest"
+              value={
+                exercise.rest
+              }
+              placeholder="e.g. 60 sec"
+              onChange={(
+                value,
+              ) =>
+                onUpdate({
+                  rest: value,
+                })
+              }
+            />
+
+          </div>
 
           <TextField
-            label="Weight"
+            label="Trainer Notes"
             value={
-              exercise.weight
+              exercise.notes
             }
-            placeholder="e.g. 20 kg"
+            placeholder="Optional instructions for members"
             onChange={(
               value,
             ) =>
               onUpdate({
-                weight: value,
-              })
-            }
-          />
-
-          <TextField
-            label="Rest"
-            value={
-              exercise.rest
-            }
-            placeholder="e.g. 60 sec"
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                rest: value,
+                notes: value,
               })
             }
           />
 
         </div>
       )}
-
-      <TextField
-        label="Trainer Notes"
-        value={
-          exercise.notes
-        }
-        placeholder="Optional instructions for members"
-        onChange={(
-          value,
-        ) =>
-          onUpdate({
-            notes: value,
-          })
-        }
-      />
 
     </article>
   )

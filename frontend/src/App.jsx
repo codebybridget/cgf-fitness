@@ -8,10 +8,21 @@ import {
   useParams,
 } from "react-router-dom"
 
+import {
+  useEffect,
+  useState,
+} from "react"
+
 import Home from "./pages/Home"
 import Login from "./pages/Login"
 import AdminLogin from "./pages/AdminLogin"
 import Register from "./pages/Register"
+import ForgotPassword from "./pages/ForgotPassword"
+import AdminForgotPassword from "./pages/AdminForgotPassword"
+import ResetPassword from "./pages/ResetPassword"
+
+import MemberMembershipPlans from "./pages/MembershipPlans.jsx"
+import PaymentCallback from "./pages/PaymentCallback.jsx"
 
 import Progress from "./pages/admin/Progress"
 import Settings from "./pages/admin/Settings"
@@ -21,8 +32,10 @@ import WorkoutHistory from "./pages/WorkoutHistory"
 import MemberProgress from "./pages/Progress"
 import Profile from "./pages/Profile"
 import WeeklySchedule from "./pages/WeeklySchedule"
-import MembershipPlans from "./pages/admin/MembershipPlans"
 import Payment from "./pages/Payment"
+
+import AdminMembershipPlans from "./pages/admin/MembershipPlans"
+
 import AdminLayout from "./layouts/AdminLayout"
 import AdminDashboard from "./pages/admin/AdminDashboard"
 import AdminProfile from "./pages/admin/AdminProfile"
@@ -33,10 +46,17 @@ import Assignments from "./pages/admin/Assignments"
 import MemberAssignments from "./pages/admin/MemberAssignments"
 import WeeklyScheduleAdmin from "./pages/admin/WeeklySchedule"
 import Exercises from "./pages/admin/Exercises"
-import Membership from "./pages/Membership"
 import Attendance from "./pages/Attendance"
 import AdminAttendance from "./pages/admin/Attendance"
-import { useAuth } from "./context/AuthContext.jsx"
+
+import {
+  useAuth,
+} from "./context/AuthContext.jsx"
+
+import {
+  getMySubscription,
+} from "./api/api.js"
+
 /*
 |--------------------------------------------------------------------------
 | Loading Screen
@@ -58,8 +78,10 @@ function LoadingScreen() {
 | Protected Member Route
 |--------------------------------------------------------------------------
 |
-| IMPORTANT:
-| Only users with role === "member" can enter member pages.
+| This route only verifies authentication and member role.
+|
+| Membership/payment pages use this route because unpaid members must
+| still be able to access the payment area.
 |
 */
 
@@ -112,6 +134,189 @@ function ProtectedRoute() {
   return <Outlet />
 }
 
+/*
+|--------------------------------------------------------------------------
+| Paid Member Route
+|--------------------------------------------------------------------------
+|
+| Authentication + member role + active paid subscription.
+|
+| Admins and trainers are handled by their own routes and are not subject
+| to this member subscription gate.
+|
+*/
+
+function PaidMemberRoute() {
+  const {
+    isAuthenticated,
+    isMember,
+    loading,
+  } = useAuth()
+
+  const location = useLocation()
+
+  const [
+    subscriptionLoading,
+    setSubscriptionLoading,
+  ] = useState(true)
+
+  const [
+    hasActiveSubscription,
+    setHasActiveSubscription,
+  ] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const checkSubscription = async () => {
+      /*
+      |--------------------------------------------------------------------------
+      | Wait for authentication to finish
+      |--------------------------------------------------------------------------
+      */
+
+      if (loading) {
+        return
+      }
+
+      /*
+      |--------------------------------------------------------------------------
+      | Only check subscription for authenticated members
+      |--------------------------------------------------------------------------
+      */
+
+      if (
+        !isAuthenticated ||
+        !isMember
+      ) {
+        if (!cancelled) {
+          setSubscriptionLoading(false)
+        }
+
+        return
+      }
+
+      try {
+        setSubscriptionLoading(true)
+
+        const data =
+          await getMySubscription()
+
+        if (cancelled) {
+          return
+        }
+
+        setHasActiveSubscription(
+          Boolean(
+            data?.hasActiveSubscription,
+          ),
+        )
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        console.error(
+          "Subscription check error:",
+          error,
+        )
+
+        setHasActiveSubscription(false)
+      } finally {
+        if (!cancelled) {
+          setSubscriptionLoading(false)
+        }
+      }
+    }
+
+    checkSubscription()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    loading,
+    isAuthenticated,
+    isMember,
+  ])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Authentication loading
+  |--------------------------------------------------------------------------
+  */
+
+  if (loading) {
+    return <LoadingScreen />
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Subscription loading
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    subscriptionLoading &&
+    isAuthenticated &&
+    isMember
+  ) {
+    return <LoadingScreen />
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Not logged in
+  |--------------------------------------------------------------------------
+  */
+
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          from: location.pathname,
+        }}
+      />
+    )
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Only members can enter paid member routes
+  |--------------------------------------------------------------------------
+  */
+
+  if (!isMember) {
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    )
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Subscription required
+  |--------------------------------------------------------------------------
+  */
+
+  if (!hasActiveSubscription) {
+    return (
+      <Navigate
+        to="/membership-plans"
+        state={{
+          from: location.pathname,
+          subscriptionRequired: true,
+        }}
+      />
+    )
+  }
+
+  return <Outlet />
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -255,6 +460,12 @@ function PublicEntry() {
   )
 }
 
+/*
+|--------------------------------------------------------------------------
+| Member Assignments Route
+|--------------------------------------------------------------------------
+*/
+
 function MemberAssignmentsRoute() {
   const navigate = useNavigate()
   const { memberId } = useParams()
@@ -262,7 +473,11 @@ function MemberAssignmentsRoute() {
   return (
     <MemberAssignments
       memberId={memberId}
-      onBack={() => navigate("/admin/assignments")}
+      onBack={() =>
+        navigate(
+          "/admin/assignments",
+        )
+      }
     />
   )
 }
@@ -306,6 +521,27 @@ function App() {
         }
       />
 
+      <Route
+        path="/forgot-password"
+        element={
+          <ForgotPassword />
+        }
+      />
+
+      <Route
+        path="/reset-password"
+        element={
+          <ResetPassword />
+        }
+      />
+
+      <Route
+        path="/admin-forgot-password"
+        element={
+          <AdminForgotPassword />
+        }
+      />
+
       {/* ================================================================ */}
       {/* ADMIN AUTHENTICATION                                             */}
       {/* ================================================================ */}
@@ -320,73 +556,104 @@ function App() {
       {/* ================================================================ */}
       {/* MEMBER ROUTES                                                    */}
       {/* ================================================================ */}
+      {/*
+        The outer ProtectedRoute allows authenticated members to access
+        membership/payment pages even when they have not paid yet.
+      */}
 
       <Route
         element={
           <ProtectedRoute />
         }
       >
+
+        {/* -------------------------------------------------------------- */}
+        {/* MEMBERSHIP / PAYMENT — AVAILABLE BEFORE PAYMENT               */}
+        {/* -------------------------------------------------------------- */}
+
         <Route
-          path="/dashboard"
+          path="/membership-plans"
           element={
-            <Home />
+            <MemberMembershipPlans />
           }
         />
 
         <Route
-          path="/workout"
+          path="/payment"
           element={
-            <Workout />
+            <Payment />
           }
         />
 
         <Route
-          path="/workout-history"
+          path="/payment/callback"
           element={
-            <WorkoutHistory />
+            <PaymentCallback />
           }
         />
 
-        <Route
-          path="/progress"
-          element={
-            <MemberProgress />
-          }
-        />
+        {/* -------------------------------------------------------------- */}
+        {/* PAID MEMBER APP                                                */}
+        {/* -------------------------------------------------------------- */}
 
         <Route
-          path="/weekly-schedule"
           element={
-            <WeeklySchedule />
+            <PaidMemberRoute />
           }
-        />
+        >
 
-        <Route
-          path="/attendance"
-          element={
-            <Attendance />
-          }
-        />
+          <Route
+            path="/dashboard"
+            element={
+              <Home />
+            }
+          />
 
-        <Route
-          path="/profile"
-          element={
-            <Profile />
-          }
-        />
+          <Route
+            path="/workout"
+            element={
+              <Workout />
+            }
+          />
+
+          <Route
+            path="/workout-history"
+            element={
+              <WorkoutHistory />
+            }
+          />
+
+          <Route
+            path="/progress"
+            element={
+              <MemberProgress />
+            }
+          />
+
+          <Route
+            path="/weekly-schedule"
+            element={
+              <WeeklySchedule />
+            }
+          />
+
+          <Route
+            path="/attendance"
+            element={
+              <Attendance />
+            }
+          />
+
+          <Route
+            path="/profile"
+            element={
+              <Profile />
+            }
+          />
+
+        </Route>
+
       </Route>
-      <Route
-  path="/membership"
-  element={
-    <Membership />
-  }
-/>
-      <Route
-  path="/payment"
-  element={
-    <Payment />
-  }
-/>
 
       {/* ================================================================ */}
       {/* ADMIN ROUTES                                                     */}
@@ -397,13 +664,17 @@ function App() {
           <AdminRoute />
         }
       >
+
         <Route
           path="/admin"
           element={
             <AdminLayout />
           }
         >
-          {/* Admin Dashboard */}
+
+          {/* ------------------------------------------------------------ */}
+          {/* Admin Dashboard                                              */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             index
@@ -412,7 +683,9 @@ function App() {
             }
           />
 
-          {/* Members */}
+          {/* ------------------------------------------------------------ */}
+          {/* Members                                                       */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="members"
@@ -421,17 +694,20 @@ function App() {
             }
           />
 
-          {/* Membership Plans */}
+          {/* ------------------------------------------------------------ */}
+          {/* Membership Plans                                              */}
+          {/* ------------------------------------------------------------ */}
 
-            <Route
-              path="membership"
-              element={
-                <MembershipPlans />
-              }
-            />
+          <Route
+            path="membership"
+            element={
+              <AdminMembershipPlans />
+            }
+          />
 
-
-          {/* Weekly Schedule */}
+          {/* ------------------------------------------------------------ */}
+          {/* Weekly Schedule                                               */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="schedule"
@@ -440,7 +716,9 @@ function App() {
             }
           />
 
-          {/* Exercises */}
+          {/* ------------------------------------------------------------ */}
+          {/* Exercises                                                     */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="exercises"
@@ -449,7 +727,9 @@ function App() {
             }
           />
 
-          {/* Programs */}
+          {/* ------------------------------------------------------------ */}
+          {/* Programs                                                      */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="programs"
@@ -458,7 +738,9 @@ function App() {
             }
           />
 
-          {/* Workouts */}
+          {/* ------------------------------------------------------------ */}
+          {/* Workouts                                                      */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="workouts"
@@ -467,7 +749,9 @@ function App() {
             }
           />
 
-          {/* Assignments */}
+          {/* ------------------------------------------------------------ */}
+          {/* Assignments                                                   */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="assignments"
@@ -476,7 +760,9 @@ function App() {
             }
           />
 
-          {/* Progress */}
+          {/* ------------------------------------------------------------ */}
+          {/* Progress                                                      */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="progress"
@@ -485,12 +771,20 @@ function App() {
             }
           />
 
+          {/* ------------------------------------------------------------ */}
+          {/* Attendance                                                    */}
+          {/* ------------------------------------------------------------ */}
+
           <Route
             path="attendance"
             element={
               <AdminAttendance />
             }
           />
+
+          {/* ------------------------------------------------------------ */}
+          {/* Member Assignments                                            */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="assignments/member/:memberId"
@@ -499,15 +793,20 @@ function App() {
             }
           />
 
-           {/* Admin Profile */}
+          {/* ------------------------------------------------------------ */}
+          {/* Admin Profile                                                 */}
+          {/* ------------------------------------------------------------ */}
 
-<Route
-  path="profile"
-  element={
-    <AdminProfile />
-  }
-/>
-          {/* Settings */}
+          <Route
+            path="profile"
+            element={
+              <AdminProfile />
+            }
+          />
+
+          {/* ------------------------------------------------------------ */}
+          {/* Settings                                                      */}
+          {/* ------------------------------------------------------------ */}
 
           <Route
             path="settings"
@@ -515,7 +814,9 @@ function App() {
               <Settings />
             }
           />
+
         </Route>
+
       </Route>
 
       {/* ================================================================ */}

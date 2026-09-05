@@ -139,7 +139,7 @@ function QuickAction({
       onClick={onClick}
       className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition ${
         accent
-          ? "border-lime-400/20 bg -lime-400/[0.06] hover:bg -lime-400/[0.10]"
+          ? "border-lime-400/20 bg- lime-400/[0.06] hover:bg -lime-400/[0.10]"
           : "border-white/10 bg-black hover:border-white/20 hover:bg -white/[0.03]"
       }`}
     >
@@ -230,6 +230,14 @@ function AdminDashboard() {
     loadDashboard()
   }, [])
 
+  const todayWorkouts = useMemo(() => {
+    return progress.filter(
+      (item) =>
+        item.workout?.status &&
+        item.workout.status !== "not_assigned",
+    )
+  }, [progress])
+
   const summary = useMemo(() => {
     const totalMembers = members.length
 
@@ -254,7 +262,7 @@ function AdminDashboard() {
         item.workout?.status === "not_started",
     ).length
 
-    const calories = progress.reduce(
+    const calories = todayWorkouts.reduce(
       (sum, item) =>
         sum +
         Number(
@@ -264,16 +272,16 @@ function AdminDashboard() {
     )
 
     const averageProgress =
-      progress.length > 0
+      todayWorkouts.length > 0
         ? Math.round(
-            progress.reduce(
+            todayWorkouts.reduce(
               (sum, item) =>
                 sum +
                 Number(
                   item.workout?.progressPercent || 0,
                 ),
               0,
-            ) / progress.length,
+            ) / todayWorkouts.length,
           )
         : 0
 
@@ -286,10 +294,10 @@ function AdminDashboard() {
       calories,
       averageProgress,
     }
-  }, [members, progress])
+  }, [members, progress, todayWorkouts])
 
   const recentActivity = useMemo(() => {
-    return [...progress]
+    return [...todayWorkouts]
       .sort((a, b) => {
         const aDate =
           a.workout?.completedAt ||
@@ -308,7 +316,7 @@ function AdminDashboard() {
         )
       })
       .slice(0, 5)
-  }, [progress])
+  }, [todayWorkouts])
 
   const topMembers = useMemo(() => {
     return [...members]
@@ -437,7 +445,7 @@ function AdminDashboard() {
             value={
               loading
                 ? "—"
-                : progress.length
+                : todayWorkouts.length
             }
             detail={`${summary.completed} completed · ${summary.inProgress} in progress`}
           />
@@ -585,7 +593,7 @@ function AdminDashboard() {
                         </div>
                       </div>
 
-                      <div className="w-full sm:max-w- [190px]">
+                      <div className="w-full sm:max -w-[190px]">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <span className="text-[10px] text-gray-600">
                             {percent}% complete
@@ -757,7 +765,7 @@ function AdminDashboard() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-lime-400/15 bg -lime-400/[0.025] p-5 sm:p-6">
+          <div className="rounded-3xl border border-lime-400/15 bg- lime-400/[0.025] p-5 sm:p-6">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lime-400 text-black">
                 <CheckCircle2 size={19} />
@@ -797,7 +805,7 @@ function AdminDashboard() {
                   Workout records today
                 </span>
                 <span className="text-xs font-black text-yellow-400">
-                  {progress.length}
+                  {todayWorkouts.length}
                 </span>
               </div>
             </div>

@@ -614,6 +614,18 @@ function normalizeExerciseResponse(
   return data
 }
 
+
+
+export const verifyPaystackPayment = async (reference) => {
+  const response = await api.post(
+    "/payment-verification/verify",
+    {
+      reference,
+    },
+  )
+
+  return response.data
+}
 /*
 |--------------------------------------------------------------------------
 | MEMBERSHIP
@@ -1286,6 +1298,20 @@ export const updateMemberStatus =
 
 /*
 |--------------------------------------------------------------------------
+| Get current member subscription
+|--------------------------------------------------------------------------
+*/
+
+export const getMySubscription = async () => {
+  const response = await api.get(
+    "/subscriptions/me",
+  )
+
+  return response.data
+}
+
+/*
+|--------------------------------------------------------------------------
 | ADMIN TRAINERS
 |--------------------------------------------------------------------------
 */
@@ -1563,5 +1589,51 @@ export const getWeeklySchedule =
 | Export Axios instance
 |--------------------------------------------------------------------------
 */
+
+/*
+|--------------------------------------------------------------------------
+| PASSWORD RESET
+|--------------------------------------------------------------------------
+| Member:
+|   POST /api/auth/forgot-password
+|   POST /api/auth/reset-password
+|
+| Admin:
+|   POST /api/admin-auth/forgot-password
+|   POST /api/admin-auth/reset-password
+|--------------------------------------------------------------------------
+*/
+
+export const requestMemberPasswordReset = async (email) => {
+  const response = await api.post(
+    "/auth/forgot-password",
+    { email },
+  )
+  return response.data
+}
+
+export const resetMemberPassword = async (token, password) => {
+  const response = await api.post(
+    "/auth/reset-password",
+    { token, password },
+  )
+  return response.data
+}
+
+export const requestAdminPasswordReset = async (email) => {
+  const response = await api.post(
+    "/admin-auth/forgot-password",
+    { email },
+  )
+  return response.data
+}
+
+export const resetAdminPassword = async (token, password) => {
+  const response = await api.post(
+    "/auth/reset-password",
+    { token, role: "admin", password },
+  )
+  return response.data
+}
 
 export default api

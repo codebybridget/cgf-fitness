@@ -1,27 +1,12 @@
 import express from "express"
 
 import {
-  getMe,
-  login,
-  register,
-} from "../controllers/authController.js"
-
-import {
   requestMemberPasswordReset,
   resetPassword,
 } from "../controllers/passwordResetController.js"
 
-import {
-  protect,
-} from "../middleware/authMiddleware.js"
-
 const router = express.Router()
 
-router.post("/register", register)
-router.post("/login", login)
-router.get("/me", protect, getMe)
-
-// Password recovery
 router.post("/forgot-password", requestMemberPasswordReset)
 router.post("/reset-password", resetPassword)
 
