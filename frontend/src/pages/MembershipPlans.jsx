@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   getMembershipPlans,
   initializePayment,
 } from "../api/api.js"
+import { useAuth } from "../context/AuthContext.jsx"
 
 const formatPrice = (price, currency = "NGN") => {
   const amount = Number(price || 0)
@@ -35,6 +37,9 @@ const getPlansFromResponse = (data) => {
 }
 
 export default function MembershipPlans() {
+  const navigate = useNavigate()
+  const { logout } = useAuth()
+
   const [plans, setPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [payingPlanId, setPayingPlanId] = useState(null)
@@ -69,6 +74,16 @@ export default function MembershipPlans() {
 
     loadPlans()
   }, [])
+
+  const handleBackToLogin = async () => {
+    try {
+      await logout()
+    } catch (err) {
+      console.error("Logout failed:", err)
+    } finally {
+      window.location.replace("/login")
+    }
+  }
 
   const handlePayment = async (plan) => {
     const planId = getPlanId(plan)
@@ -111,12 +126,26 @@ export default function MembershipPlans() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-300 border-t-lime-400" />
-          <p className="text-gray-400">
-            Loading membership plans...
-          </p>
+      <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl">
+          <button
+            type="button"
+            onClick={handleBackToLogin}
+            aria-label="Back to Login"
+            title="Back to Login"
+            className="mb-6 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-2xl font-medium leading-none text-white transition hover:bg-white/10"
+          >
+            ←
+          </button>
+
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="text-center">
+              <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-300 border-t-lime-400" />
+              <p className="text-gray-400">
+                Loading membership plans...
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -125,6 +154,16 @@ export default function MembershipPlans() {
   return (
     <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
+        <button
+          type="button"
+          onClick={handleBackToLogin}
+          aria-label="Back to Login"
+          title="Back to Login"
+          className="mb-6 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-2xl font-medium leading-none text-white transition hover:bg-white/10"
+        >
+          ←
+        </button>
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white">
             Membership Plans

@@ -914,6 +914,13 @@ export const getExerciseById =
       ),
     )
 
+    if (data.isActive !== undefined) {
+      formData.append(
+        "isActive",
+        String(data.isActive),
+      )
+    }
+
     if (
       data.image instanceof
       File

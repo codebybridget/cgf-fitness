@@ -403,60 +403,81 @@ function PublicEntry() {
 
   /*
   |--------------------------------------------------------------------------
-  | Not logged in
+  | Authenticated users
   |--------------------------------------------------------------------------
   */
 
-  if (!isAuthenticated) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-      />
-    )
+  if (isAuthenticated) {
+    if (isAdmin) {
+      return (
+        <Navigate
+          to="/admin"
+          replace
+        />
+      )
+    }
+
+    if (isMember) {
+      return (
+        <Navigate
+          to="/dashboard"
+          replace
+        />
+      )
+    }
   }
 
   /*
   |--------------------------------------------------------------------------
-  | Admin
+  | First screen for new visitors
   |--------------------------------------------------------------------------
-  */
-
-  if (isAdmin) {
-    return (
-      <Navigate
-        to="/admin"
-        replace
-      />
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Member
-  |--------------------------------------------------------------------------
-  */
-
-  if (isMember) {
-    return (
-      <Navigate
-        to="/dashboard"
-        replace
-      />
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Unknown role
-  |--------------------------------------------------------------------------
+  |
+  | The CGF website opens on a simple welcome/authentication choice.
+  | New visitors can create an account, while existing users can sign in.
+  |
   */
 
   return (
-    <Navigate
-      to="/login"
-      replace
-    />
+    <div className="min-h-screen bg-slate-950 px-4 py-10 text-white">
+      <div className="mx-auto flex min-h-[80vh] w-full max-w-md items-center justify-center">
+        <div className="w-full rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-xl font-black text-slate-950">
+              CGF
+            </div>
+
+            <h1 className="text-3xl font-bold">
+              Create Your Account
+            </h1>
+
+            <p className="mt-2 text-sm text-slate-400">
+              Create your CGF Gym member account.
+            </p>
+          </div>
+
+          <div className="space-y-5">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/register"
+              }}
+              className="w-full rounded-xl bg-lime-400 px-4 py-3 font-bold text-slate-950 transition hover:bg-lime-300"
+            >
+              Create an Account
+            </button>
+
+            <div className="text-center">
+              <a
+                href="/login"
+                className="font-semibold text-slate-300 underline underline-offset-4 transition hover:text-white"
+              >
+                Already have an account? Sign In
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 

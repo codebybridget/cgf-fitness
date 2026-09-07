@@ -42,8 +42,17 @@ const normalizeArray = (
   ) {
     const trimmedValue = value.trim()
 
-    // FormData sends array fields as JSON strings.
-    // Parse them before falling back to separator-based values.
+    /*
+    |--------------------------------------------------------------------------
+    | Handle JSON Arrays From FormData
+    |--------------------------------------------------------------------------
+    |
+    | The frontend sends array fields such as targetGender and fitnessGoals
+    | through FormData using JSON.stringify(). Parse those values back into
+    | real arrays before applying the normal array cleanup.
+    |
+    */
+
     if (
       trimmedValue.startsWith("[") &&
       trimmedValue.endsWith("]")
@@ -61,7 +70,7 @@ const normalizeArray = (
             .filter(Boolean)
         }
       } catch {
-        // Fall through to normal separator handling.
+        // Fall back to normal separator handling below.
       }
     }
 
@@ -1698,68 +1707,32 @@ const deleteExercise =
         id,
       } = req.params
 
-
       if (
         !mongoose.Types.ObjectId.isValid(
           id,
         )
       ) {
-        return res.status(
-          400,
-        ).json({
-          success:
-            false,
-
-          message:
-            "Invalid exercise ID.",
+        return res.status(400).json({
+          success: false,
+          message: "Invalid exercise ID.",
         })
       }
-
 
       const exercise =
-        await Exercise.findById(
-          id,
-        )
-
+        await Exercise.findById(id)
 
       if (!exercise) {
-        return res.status(
-          404,
-        ).json({
-          success:
-            false,
-
-          message:
-            "Exercise not found.",
+        return res.status(404).json({
+          success: false,
+          message: "Exercise not found.",
         })
       }
 
+      await Exercise.findByIdAndDelete(id)
 
-      exercise.isActive =
-        false
-
-
-      if (
-        req.user?._id
-      ) {
-        exercise.updatedBy =
-          req.user._id
-      }
-
-
-      await exercise.save()
-
-
-      return res.status(
-        200,
-      ).json({
-        success:
-          true,
-
-        message:
-          "Exercise deactivated successfully.",
-
-        exercise,
+      return res.status(200).json({
+        success: true,
+        message: "Exercise deleted successfully.",
       })
 
     } catch (error) {

@@ -34,8 +34,12 @@ const EMPTY_FORM = {
   name: "",
   category: "Upper Body",
   muscleGroup: "",
+  secondaryMuscles: "",
+  targetGender: ["Male", "Female"],
+  fitnessGoals: ["Keep Fit"],
   description: "",
   instructions: "",
+  safetyTips: "",
   equipment: "",
   difficulty: "Beginner",
   defaultSets: 3,
@@ -89,6 +93,22 @@ function exerciseToForm(
       exercise.muscleGroup ||
       "",
 
+    secondaryMuscles:
+      Array.isArray(exercise.secondaryMuscles)
+        ? exercise.secondaryMuscles.join(", ")
+        : "",
+
+    targetGender:
+      Array.isArray(exercise.targetGender) &&
+      exercise.targetGender.length
+        ? exercise.targetGender
+        : ["Male", "Female"],
+
+    fitnessGoals:
+      Array.isArray(exercise.fitnessGoals)
+        ? exercise.fitnessGoals
+        : [],
+
     description:
       exercise.description ||
       "",
@@ -100,7 +120,16 @@ function exerciseToForm(
         ? exercise.instructions.join(
             "\n",
           )
-        : "",
+        : exercise.instructions || "",
+
+    safetyTips:
+      Array.isArray(
+        exercise.safetyTips,
+      )
+        ? exercise.safetyTips.join(
+            "\n",
+          )
+        : exercise.safetyTips || "",
 
     equipment:
       Array.isArray(
@@ -155,6 +184,21 @@ function buildPayload(
 
     muscleGroup:
       form.muscleGroup.trim(),
+
+    secondaryMuscles:
+      normalizeArray(
+        form.secondaryMuscles,
+      ),
+
+    targetGender:
+      Array.isArray(form.targetGender)
+        ? form.targetGender
+        : ["Male", "Female"],
+
+    fitnessGoals:
+      Array.isArray(form.fitnessGoals)
+        ? form.fitnessGoals
+        : [],
 
     description:
       form.description.trim(),
@@ -329,6 +373,11 @@ export default function Exercises() {
   const [
     editingExercise,
     setEditingExercise,
+  ] = useState(null)
+
+  const [
+    deleteConfirmExercise,
+    setDeleteConfirmExercise,
   ] = useState(null)
 
   /*
@@ -917,6 +966,27 @@ export default function Exercises() {
         )
 
         formData.append(
+          "secondaryMuscles",
+          JSON.stringify(
+            payload.secondaryMuscles,
+          ),
+        )
+
+        formData.append(
+          "targetGender",
+          JSON.stringify(
+            payload.targetGender,
+          ),
+        )
+
+        formData.append(
+          "fitnessGoals",
+          JSON.stringify(
+            payload.fitnessGoals,
+          ),
+        )
+
+        formData.append(
           "description",
           payload.description,
         )
@@ -988,6 +1058,13 @@ export default function Exercises() {
         formData.append(
           "instructions",
           payload.instructions.join(
+            "\n",
+          ),
+        )
+
+        formData.append(
+          "safetyTips",
+          payload.safetyTips.join(
             "\n",
           ),
         )
@@ -1330,17 +1407,23 @@ export default function Exercises() {
   */
 
   const handleDeactivate =
-    async (exercise) => {
-      const confirmed =
-        window.confirm(
-          `Deactivate "${exercise.name}"?`,
-        )
+    (exercise) => {
+      setError("")
+      setSuccess("")
+      setDeleteConfirmExercise(exercise)
+    }
 
-      if (!confirmed) {
+  const confirmDeactivate =
+    async () => {
+      if (!deleteConfirmExercise?._id) {
         return
       }
 
+      const exercise =
+        deleteConfirmExercise
+
       try {
+        setDeleteConfirmExercise(null)
         setError("")
         setSuccess("")
 
@@ -1358,13 +1441,13 @@ export default function Exercises() {
         )
 
         setSuccess(
-          "Exercise deactivated successfully.",
+          "Exercise removed successfully.",
         )
       } catch (
         deleteError
       ) {
         console.error(
-          "Unable to deactivate exercise:",
+          "Unable to remove exercise:",
           deleteError,
         )
 
@@ -1372,7 +1455,7 @@ export default function Exercises() {
           deleteError.response
             ?.data?.message ||
             deleteError.message ||
-            "Unable to deactivate exercise.",
+            "Unable to remove exercise.",
         )
       }
     }
@@ -1677,65 +1760,121 @@ export default function Exercises() {
 
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Sets</p>
+                          <p className="mt-1 text-sm font-bold text-white">{exercise.defaultSets ?? 3}</p>
+                        </div>
 
-                        <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-slate-400">
-                          {
-                            exercise.category
-                          }
-                        </span>
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Reps</p>
+                          <p className="mt-1 text-sm font-bold text-white">{exercise.defaultReps || "—"}</p>
+                        </div>
 
-                        <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-slate-400">
-                          {
-                            exercise.defaultSets
-                          }{" "}
-                          sets
-                        </span>
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Duration</p>
+                          <p className="mt-1 text-sm font-bold text-white">
+                            {exercise.defaultDuration ? `${exercise.defaultDuration} sec` : "—"}
+                          </p>
+                        </div>
 
-                        {exercise.defaultReps && (
-                          <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-slate-400">
-                            {
-                              exercise.defaultReps
-                            }{" "}
-                            reps
-                          </span>
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Rest</p>
+                          <p className="mt-1 text-sm font-bold text-white">
+                            {exercise.defaultRest != null ? `${exercise.defaultRest} sec` : "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-3 text-sm">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Secondary Muscles</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.secondaryMuscles) && exercise.secondaryMuscles.length
+                              ? exercise.secondaryMuscles.join(", ")
+                              : "None specified"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Equipment</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.equipment)
+                              ? exercise.equipment.join(", ")
+                              : exercise.equipment || "No equipment"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Recommended For</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.targetGender) && exercise.targetGender.length
+                              ? exercise.targetGender.join(", ")
+                              : "Male, Female"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fitness Goals</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.fitnessGoals) && exercise.fitnessGoals.length
+                              ? exercise.fitnessGoals.join(", ")
+                              : "Not specified"}
+                          </p>
+                        </div>
+
+                        {exercise.caloriesEstimate != null && exercise.caloriesEstimate !== "" && (
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Calories Estimate</p>
+                            <p className="mt-1 text-slate-300">{exercise.caloriesEstimate} kcal</p>
+                          </div>
                         )}
-
-                        {exercise.defaultDuration && (
-                          <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-slate-400">
-                            {
-                              exercise.defaultDuration
-                            }{" "}
-                            sec
-                          </span>
-                        )}
-
                       </div>
 
                       {exercise.description && (
-                        <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-400">
-                          {
-                            exercise.description
-                          }
-                        </p>
+                        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Description</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-300">
+                            {exercise.description}
+                          </p>
+                        </div>
                       )}
 
-                      {/* -------------------------------------------------- */}
-                      {/* Video indicator                                    */}
-                      {/* -------------------------------------------------- */}
+                      {Array.isArray(exercise.instructions) && exercise.instructions.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Instructions</p>
+                          <ol className="mt-2 space-y-2 text-sm leading-6 text-slate-300">
+                            {exercise.instructions.map((instruction, index) => (
+                              <li key={`${exercise._id}-instruction-${index}`}>
+                                <span className="font-bold text-lime-400">{index + 1}.</span>{" "}
+                                {instruction}
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+
+                      {Array.isArray(exercise.safetyTips) && exercise.safetyTips.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-yellow-400/10 bg-yellow-400/[0.03] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-yellow-400">Safety Tips</p>
+                          <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-300">
+                            {exercise.safetyTips.map((tip, index) => (
+                              <li key={`${exercise._id}-safety-${index}`}>
+                                • {tip}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
 
                       {exercise.videoUrl && (
                         <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-black">
-
                           <video
-                            src={
-                              exercise.videoUrl
-                            }
+                            src={exercise.videoUrl}
                             controls
                             preload="metadata"
                             className="max-h-52 w-full"
                           />
-
                         </div>
                       )}
 
@@ -1887,6 +2026,41 @@ export default function Exercises() {
                 {creatingProgram
                   ? "CREATING PROGRAM..."
                   : "CREATE PROGRAM"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmExercise && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <h2 className="text-xl font-black text-white">
+              Remove Exercise
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              Are you sure you want to remove{" "}
+              <span className="font-bold text-white">
+                {deleteConfirmExercise.name}
+              </span>
+              ?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setDeleteConfirmExercise(null)
+                }
+                className="flex-1 rounded-xl border border-white/10 px-4 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/5"
+              >
+                CANCEL
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeactivate}
+                className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-black text-white transition hover:bg-red-400"
+              >
+                REMOVE
               </button>
             </div>
           </div>
@@ -2057,6 +2231,109 @@ export default function Exercises() {
                       className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
                     />
 
+                  </div>
+
+                  {/* Secondary muscles */}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Secondary Muscles
+                    </label>
+
+                    <input
+                      name="secondaryMuscles"
+                      value={form.secondaryMuscles}
+                      onChange={handleChange}
+                      placeholder="e.g. Triceps, Shoulders, Core"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                    />
+
+                    <p className="mt-2 text-xs text-slate-600">
+                      Separate muscle groups with commas.
+                    </p>
+                  </div>
+
+                  {/* Target gender */}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Target Gender
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {["Male", "Female"].map((gender) => {
+                        const selected = form.targetGender.includes(gender)
+
+                        return (
+                          <button
+                            key={gender}
+                            type="button"
+                            onClick={() =>
+                              setForm((current) => ({
+                                ...current,
+                                targetGender: selected
+                                  ? current.targetGender.filter(
+                                      (item) => item !== gender,
+                                    )
+                                  : [...current.targetGender, gender],
+                              }))
+                            }
+                            className={`rounded-xl px-4 py-3 text-sm font-bold transition ${
+                              selected
+                                ? "bg-lime-400 text-black"
+                                : "border border-white/10 bg-slate-900 text-slate-400"
+                            }`}
+                          >
+                            {selected ? "✓ " : ""}
+                            {gender}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Fitness goals */}
+
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Fitness Goals
+                    </label>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {[
+                        "Lose Weight",
+                        "Keep Fit",
+                        "Gain Weight",
+                        "Train to Become a Trainer",
+                      ].map((goal) => {
+                        const selected = form.fitnessGoals.includes(goal)
+
+                        return (
+                          <button
+                            key={goal}
+                            type="button"
+                            onClick={() =>
+                              setForm((current) => ({
+                                ...current,
+                                fitnessGoals: selected
+                                  ? current.fitnessGoals.filter(
+                                      (item) => item !== goal,
+                                    )
+                                  : [...current.fitnessGoals, goal],
+                              }))
+                            }
+                            className={`rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                              selected
+                                ? "bg-lime-400 text-black"
+                                : "border border-white/10 bg-slate-900 text-slate-400"
+                            }`}
+                          >
+                            {selected ? "✓ " : ""}
+                            {goal}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
 
                   {/* Difficulty */}
@@ -2274,6 +2551,31 @@ export default function Exercises() {
                 <p className="mt-2 text-xs text-slate-600">
                   Enter one instruction
                   per line.
+                </p>
+
+              </div>
+
+              {/* ========================================================== */}
+              {/* SAFETY TIPS                                                  */}
+              {/* ========================================================== */}
+
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
+
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Safety Tips
+                </label>
+
+                <textarea
+                  name="safetyTips"
+                  value={form.safetyTips}
+                  onChange={handleChange}
+                  rows="5"
+                  placeholder="Enter one safety tip per line..."
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                />
+
+                <p className="mt-2 text-xs text-slate-600">
+                  Enter one safety tip per line.
                 </p>
 
               </div>

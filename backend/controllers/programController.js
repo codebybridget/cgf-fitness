@@ -299,6 +299,34 @@ const normalizeExercises =
             item.rest ?? 60,
           ),
 
+        weight:
+          item.weight === null ||
+          item.weight === undefined ||
+          item.weight === ""
+            ? null
+            : Number(item.weight),
+
+        workInterval:
+          item.workInterval === null ||
+          item.workInterval === undefined ||
+          item.workInterval === ""
+            ? null
+            : Number(item.workInterval),
+
+        restInterval:
+          item.restInterval === null ||
+          item.restInterval === undefined ||
+          item.restInterval === ""
+            ? null
+            : Number(item.restInterval),
+
+        rounds:
+          item.rounds === null ||
+          item.rounds === undefined ||
+          item.rounds === ""
+            ? null
+            : Number(item.rounds),
+
         notes:
           item.notes
             ?.trim() || "",
@@ -355,6 +383,46 @@ const validateProgramExercises =
       ) {
         throw new Error(
           "Rest must be zero or greater.",
+        )
+      }
+
+      if (
+        item.weight !== null &&
+        (!Number.isFinite(item.weight) ||
+          item.weight < 0)
+      ) {
+        throw new Error(
+          "Weight must be zero or greater.",
+        )
+      }
+
+      if (
+        item.workInterval !== null &&
+        (!Number.isInteger(item.workInterval) ||
+          item.workInterval < 1)
+      ) {
+        throw new Error(
+          "Work interval must be greater than zero.",
+        )
+      }
+
+      if (
+        item.restInterval !== null &&
+        (!Number.isInteger(item.restInterval) ||
+          item.restInterval < 0)
+      ) {
+        throw new Error(
+          "Rest interval must be zero or greater.",
+        )
+      }
+
+      if (
+        item.rounds !== null &&
+        (!Number.isInteger(item.rounds) ||
+          item.rounds < 1)
+      ) {
+        throw new Error(
+          "Rounds must be a whole number greater than zero.",
         )
       }
     }

@@ -1,83 +1,34 @@
 import {
   CalendarDays,
   Dumbbell,
-  GripVertical,
+  Loader2,
   Plus,
-  Save,
   Trash2,
 } from "lucide-react"
 
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 
 import {
-  useNavigate,
-  useLocation,
-} from "react-router-dom"
-
-import {
   createProgram,
   deleteProgram,
-  getExercises,
   getPrograms,
   updateProgram,
 } from "../../api/api.js"
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom"
 
-const weekDays = [
-  {
-    day: "Monday",
-    workoutType: "Lower Body",
-    time: "",
-  },
-  {
-    day: "Tuesday",
-    workoutType: "Upper Body",
-    time: "",
-  },
-  {
-    day: "Wednesday",
-    workoutType: "Lower Body",
-    time: "",
-  },
-  {
-    day: "Thursday",
-    workoutType: "Upper Body",
-    time: "",
-  },
-  {
-    day: "Friday",
-    workoutType: "CrossFit",
-    time: "",
-  },
-  {
-    day: "Saturday",
-    workoutType: "Tabata",
-    time: "8:00 AM - 9:00 AM",
-  },
-]
-
-const workoutTypes = [
-  "Lower Body",
-  "Upper Body",
-  "CrossFit",
-  "Tabata",
-]
 
 function Programs() {
-  const navigate = useNavigate()
-  const location = useLocation()
-
   const [
     programs,
     setPrograms,
-  ] = useState([])
-
-  const [
-    exerciseLibrary,
-    setExerciseLibrary,
   ] = useState([])
 
   const [
@@ -96,14 +47,15 @@ function Programs() {
   ] = useState(false)
 
   const [
-    creating,
-    setCreating,
-  ] = useState(false)
-
-  const [
     error,
     setError,
   ] = useState("")
+
+  const [success, setSuccess] = useState("")
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  const navigate = useNavigate()
+  const location = useLocation()
 
   /*
   |--------------------------------------------------------------------------
@@ -117,33 +69,15 @@ function Programs() {
         setLoading(true)
         setError("")
 
-        const [
-          programsResponse,
-          exercisesResponse,
-        ] = await Promise.all([
-          getPrograms(),
-          getExercises({
-            active: true,
-          }),
-        ])
+        const response =
+          await getPrograms()
 
         const loadedPrograms =
           Array.isArray(
-            programsResponse?.programs,
+            response?.programs,
           )
-            ? programsResponse.programs
+            ? response.programs
             : []
-
-        const loadedExercises =
-          Array.isArray(
-            exercisesResponse?.exercises,
-          )
-            ? exercisesResponse.exercises
-            : []
-
-        setExerciseLibrary(
-          loadedExercises,
-        )
 
         const activePrograms =
           loadedPrograms.filter(
@@ -261,6 +195,7 @@ function Programs() {
       try {
         setSaving(true)
         setError("")
+        setSuccess("")
 
         const programId =
           getProgramId(
@@ -293,6 +228,8 @@ function Programs() {
         } else {
           await loadPrograms()
         }
+
+        setSuccess("Program updated successfully.")
       } catch (error) {
         console.error(
           "Update program error:",
@@ -336,23 +273,92 @@ function Programs() {
 
       const updatedExercises =
         currentExercises.map(
-          (exercise) => {
+          (exercise, index) => {
             const id =
               getExerciseId(
                 exercise,
               )
 
-            if (
-              id !== exerciseId
-            ) {
-              return exercise
-            }
+            const updatedExercise =
+              id === exerciseId
+                ? {
+                    ...exercise,
+                    ...changes,
+                  }
+                : exercise
+
+            const exerciseIdValue =
+              getExerciseId(
+                updatedExercise,
+              )
 
             return {
-              ...exercise,
-              ...changes,
+              exercise: exerciseIdValue,
+              order: Number(
+                updatedExercise.order ??
+                  index + 1,
+              ),
+              sets: Number(
+                updatedExercise.sets ??
+                  3,
+              ),
+              reps:
+                updatedExercise.reps ==
+                  null ||
+                updatedExercise.reps ===
+                  ""
+                  ? null
+                  : Number(
+                      updatedExercise.reps,
+                    ),
+              duration:
+                updatedExercise.duration ==
+                  null ||
+                updatedExercise.duration ===
+                  ""
+                  ? null
+                  : Number(
+                      updatedExercise.duration,
+                    ),
+              rest:
+                updatedExercise.rest === null ||
+                updatedExercise.rest === undefined ||
+                updatedExercise.rest === ""
+                  ? 0
+                  : Number(updatedExercise.rest),
+              weight:
+                updatedExercise.weight === null ||
+                updatedExercise.weight === undefined ||
+                updatedExercise.weight === ""
+                  ? null
+                  : updatedExercise.weight,
+              workInterval:
+                updatedExercise.workInterval === null ||
+                updatedExercise.workInterval === undefined ||
+                updatedExercise.workInterval === ""
+                  ? null
+                  : Number(updatedExercise.workInterval),
+              restInterval:
+                updatedExercise.restInterval === null ||
+                updatedExercise.restInterval === undefined ||
+                updatedExercise.restInterval === ""
+                  ? null
+                  : Number(updatedExercise.restInterval),
+              rounds:
+                updatedExercise.rounds === null ||
+                updatedExercise.rounds === undefined ||
+                updatedExercise.rounds === ""
+                  ? null
+                  : Number(updatedExercise.rounds),
+              notes:
+                updatedExercise.notes ??
+                "",
             }
           },
+        )
+        .filter(
+          (exercise) =>
+            Boolean(exercise.exercise),
         )
 
       await handleUpdateProgram(
@@ -379,15 +385,6 @@ function Programs() {
         return
       }
 
-      const confirmed =
-        window.confirm(
-          "Remove this exercise from the program?",
-        )
-
-      if (!confirmed) {
-        return
-      }
-
       const currentExercises =
         Array.isArray(
           selectedProgram.exercises,
@@ -396,12 +393,73 @@ function Programs() {
           : []
 
       const updatedExercises =
-        currentExercises.filter(
-          (exercise) =>
-            getExerciseId(
+        currentExercises
+          .filter(
+            (exercise) =>
+              getExerciseId(
+                exercise,
+              ) !== exerciseId,
+          )
+          .map((exercise, index) => ({
+            exercise: getExerciseId(
               exercise,
-            ) !== exerciseId,
-        )
+            ),
+            order: Number(
+              exercise.order ??
+                index + 1,
+            ),
+            sets: Number(
+              exercise.sets ??
+                3,
+            ),
+            reps:
+              exercise.reps == null ||
+              exercise.reps === ""
+                ? null
+                : Number(exercise.reps),
+            duration:
+              exercise.duration == null ||
+              exercise.duration === ""
+                ? null
+                : Number(exercise.duration),
+            rest:
+              exercise.rest === null ||
+              exercise.rest === undefined ||
+              exercise.rest === ""
+                ? 0
+                : Number(exercise.rest),
+            weight:
+              exercise.weight === null ||
+              exercise.weight === undefined ||
+              exercise.weight === ""
+                ? null
+                : exercise.weight,
+            workInterval:
+              exercise.workInterval === null ||
+              exercise.workInterval === undefined ||
+              exercise.workInterval === ""
+                ? null
+                : Number(exercise.workInterval),
+            restInterval:
+              exercise.restInterval === null ||
+              exercise.restInterval === undefined ||
+              exercise.restInterval === ""
+                ? null
+                : Number(exercise.restInterval),
+            rounds:
+              exercise.rounds === null ||
+              exercise.rounds === undefined ||
+              exercise.rounds === ""
+                ? null
+                : Number(exercise.rounds),
+            notes:
+              exercise.notes ??
+              "",
+          }))
+          .filter(
+            (exercise) =>
+              Boolean(exercise.exercise),
+          )
 
       await handleUpdateProgram(
         {
@@ -416,14 +474,16 @@ function Programs() {
   | Create program
   |--------------------------------------------------------------------------
   |
-  | A new program must be built from real exercises. The Exercise Library
-  | owns exercise selection, so the NEW PROGRAM button starts that workflow
-  | instead of using a browser prompt.
-  |--------------------------------------------------------------------------
+  | A program must be created from real exercises. The Exercise Library
+  | owns exercise selection, so NEW PROGRAM starts that workflow instead
+  | of sending an empty exercises array to the backend.
   */
 
   const handleCreateProgram =
     () => {
+      setError("")
+      setSuccess("")
+
       navigate(
         "/admin/exercises",
         {
@@ -436,7 +496,7 @@ function Programs() {
 
   /*
   |--------------------------------------------------------------------------
-  | Select a program returned from the Exercise Library
+  | Select program returned from Exercise Library
   |--------------------------------------------------------------------------
   */
 
@@ -486,15 +546,6 @@ function Programs() {
         return
       }
 
-      const confirmed =
-        window.confirm(
-          `Deactivate "${selectedProgram.name}"?`,
-        )
-
-      if (!confirmed) {
-        return
-      }
-
       try {
         setSaving(true)
         setError("")
@@ -527,6 +578,8 @@ function Programs() {
               )
             : "",
         )
+        setShowDeleteModal(false)
+        setSuccess("Program removed successfully.")
       } catch (error) {
         console.error(
           "Delete program error:",
@@ -537,7 +590,7 @@ function Programs() {
           error.response?.data
             ?.message ||
             error.message ||
-            "Unable to deactivate workout program.",
+            "Unable to remove workout program.",
         )
       } finally {
         setSaving(false)
@@ -581,12 +634,7 @@ function Programs() {
 
             <button
               type="button"
-              onClick={
-                handleCreateProgram
-              }
-              disabled={
-                creating
-              }
+              onClick={handleCreateProgram}
               className="flex items-center justify-center gap-2 rounded-2xl bg-yellow-400 px-5 py-3.5 text-sm font-black text-black disabled:opacity-50"
             >
 
@@ -594,35 +642,10 @@ function Programs() {
                 size={17}
               />
 
-              {creating
-                ? "CREATING..."
-                : "NEW PROGRAM"}
+              NEW PROGRAM
 
             </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                handleUpdateProgram(
-                  {},
-                )
-              }
-              disabled={
-                saving ||
-                !selectedProgram
-              }
-              className="flex items-center justify-center gap-2 rounded-2xl bg-lime-400 px-5 py-3.5 text-sm font-black text-black disabled:opacity-50"
-            >
-
-              <Save
-                size={17}
-              />
-
-              {saving
-                ? "SAVING..."
-                : "SAVE PROGRAM"}
-
-            </button>
 
           </div>
 
@@ -633,6 +656,12 @@ function Programs() {
         {error && (
           <div className="mt-6 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm font-bold text-red-400">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mt-6 rounded-2xl border border-lime-400/20 bg-lime-400/10 p-4 text-sm font-bold text-lime-400">
+            {success}
           </div>
         )}
 
@@ -665,9 +694,7 @@ function Programs() {
 
             <button
               type="button"
-              onClick={
-                handleCreateProgram
-              }
+              onClick={handleCreateProgram}
               className="mt-5 rounded-2xl bg-yellow-400 px-5 py-3 text-xs font-black text-black"
             >
               CREATE FIRST PROGRAM
@@ -927,50 +954,39 @@ function Programs() {
                       (
                         exercise,
                         index,
-                      ) => {
-                        const exerciseDetails =
-                          findExerciseDetails(
-                            exercise,
-                            exerciseLibrary,
-                          )
-
-                        return (
-                          <ProgramExercise
-                            key={
+                      ) => (
+                        <ProgramExercise
+                          key={
+                            getExerciseId(
+                              exercise,
+                            ) ||
+                            index
+                          }
+                          exercise={
+                            exercise
+                          }
+                          index={
+                            index
+                          }
+                          onUpdate={(
+                            changes,
+                          ) =>
+                            handleUpdateExercise(
                               getExerciseId(
                                 exercise,
-                              ) ||
-                              index
-                            }
-                            exercise={
-                              exercise
-                            }
-                            exerciseDetails={
-                              exerciseDetails
-                            }
-                            index={
-                              index
-                            }
-                            onUpdate={(
+                              ),
                               changes,
-                            ) =>
-                              handleUpdateExercise(
-                                getExerciseId(
-                                  exercise,
-                                ),
-                                changes,
-                              )
-                            }
-                            onRemove={() =>
-                              handleRemoveExercise(
-                                getExerciseId(
-                                  exercise,
-                                ),
-                              )
-                            }
-                          />
-                        )
-                      },
+                            )
+                          }
+                          onRemove={() =>
+                            handleRemoveExercise(
+                              getExerciseId(
+                                exercise,
+                              ),
+                            )
+                          }
+                        />
+                      ),
                     )
                   )}
 
@@ -1001,9 +1017,11 @@ function Programs() {
 
                   <button
                     type="button"
-                    onClick={
-                      handleDeleteProgram
-                    }
+                    onClick={() => {
+                      setError("")
+                      setSuccess("")
+                      setShowDeleteModal(true)
+                    }}
                     disabled={
                       saving
                     }
@@ -1014,7 +1032,7 @@ function Programs() {
                       size={15}
                     />
 
-                    DEACTIVATE PROGRAM
+                    REMOVE PROGRAM
 
                   </button>
 
@@ -1024,6 +1042,34 @@ function Programs() {
             )}
 
           </>
+        )}
+
+        {showDeleteModal && selectedProgram && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-5">
+            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-6">
+              <h2 className="text-xl font-black">Remove Program?</h2>
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                Remove "{selectedProgram.name}" from the active program list?
+              </p>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  className="rounded-2xl bg-white/5 px-5 py-3 text-xs font-black text-gray-400"
+                >
+                  CANCEL
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteProgram}
+                  disabled={saving}
+                  className="rounded-2xl bg-red-400/10 px-5 py-3 text-xs font-black text-red-400 disabled:opacity-50"
+                >
+                  {saving ? "REMOVING..." : "REMOVE PROGRAM"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
       </main>
@@ -1040,89 +1086,226 @@ function Programs() {
 
 function ProgramExercise({
   exercise,
-  exerciseDetails,
   index,
   onUpdate,
   onRemove,
 }) {
-  const details =
-    exerciseDetails || {}
+  const isTabata =
+    String(
+      exercise.category ||
+        exercise.workoutType ||
+        exercise.exercise?.category ||
+        exercise.exercise?.workoutType ||
+        "",
+    ).toLowerCase() === "tabata"
+
+  const exerciseData =
+    typeof exercise.exercise === "object"
+      ? exercise.exercise
+      : exercise
 
   const exerciseName =
-    details.name ||
-    exercise?.name ||
+    exercise.name ||
+    exerciseData?.name ||
     "Unnamed Exercise"
 
-  const category =
-    details.category ||
-    exercise?.category ||
-    exercise?.workoutType ||
-    "Exercise"
+  const imageUrl =
+    exercise.imageUrl ||
+    exerciseData?.imageUrl ||
+    exercise.image?.url ||
+    exerciseData?.image?.url ||
+    exercise.image ||
+    exerciseData?.image ||
+    ""
 
   const muscleGroup =
-    details.muscleGroup ||
-    exercise?.muscleGroup ||
+    exercise.muscleGroup ||
+    exerciseData?.muscleGroup ||
     "Muscle group"
 
   const equipment =
-    details.equipment ??
-    exercise?.equipment
+    exercise.equipment ??
+    exerciseData?.equipment
 
   const equipmentText =
-    formatEquipment(
-      equipment,
+    Array.isArray(equipment)
+      ? equipment.join(", ")
+      : equipment || "No equipment"
+
+  const [draft, setDraft] = useState(() => ({
+    sets: exercise.sets ?? 3,
+    reps: exercise.reps ?? "",
+    weight: exercise.weight ?? "",
+    rest: exercise.rest ?? "",
+    notes: exercise.notes ?? "",
+    workInterval: exercise.workInterval ?? "",
+    restInterval: exercise.restInterval ?? "",
+    rounds: exercise.rounds ?? "",
+  }))
+
+  const [saveState, setSaveState] = useState("saved")
+  const timerRef = useRef(null)
+  const latestDraftRef = useRef(draft)
+  const lastSavedValuesRef = useRef({
+    sets: exercise.sets ?? 3,
+    reps: exercise.reps ?? "",
+    weight: exercise.weight ?? "",
+    rest: exercise.rest ?? "",
+    notes: exercise.notes ?? "",
+    workInterval: exercise.workInterval ?? "",
+    restInterval: exercise.restInterval ?? "",
+    rounds: exercise.rounds ?? "",
+  })
+
+  useEffect(() => {
+    const serverValues = {
+      sets: exercise.sets ?? 3,
+      reps: exercise.reps ?? "",
+      weight: exercise.weight ?? "",
+      rest: exercise.rest ?? "",
+      notes: exercise.notes ?? "",
+      workInterval: exercise.workInterval ?? "",
+      restInterval: exercise.restInterval ?? "",
+      rounds: exercise.rounds ?? "",
+    }
+
+    const lastSaved = lastSavedValuesRef.current
+
+    // Only sync server values into the input when the server actually changed
+    // independently of our current local draft. This prevents autosave responses
+    // from erasing text while the user is typing.
+    const serverChanged =
+      JSON.stringify(serverValues) !==
+      JSON.stringify(lastSaved)
+
+    if (serverChanged) {
+      latestDraftRef.current = serverValues
+      lastSavedValuesRef.current = serverValues
+      setDraft(serverValues)
+      setSaveState("saved")
+    }
+  }, [
+    exercise.sets,
+    exercise.reps,
+    exercise.weight,
+    exercise.rest,
+    exercise.notes,
+    exercise.workInterval,
+    exercise.restInterval,
+    exercise.rounds,
+  ])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
+    }
+  }, [])
+
+  const scheduleSave = (changes, nextValues) => {
+    const merged = {
+      ...latestDraftRef.current,
+      ...nextValues,
+    }
+
+    latestDraftRef.current = merged
+    setDraft(merged)
+    setSaveState("saving")
+
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+    }
+
+    timerRef.current = setTimeout(async () => {
+      try {
+        await onUpdate(changes)
+        lastSavedValuesRef.current = {
+          ...latestDraftRef.current,
+        }
+        setSaveState("saved")
+      } catch (error) {
+        console.error("Exercise autosave error:", error)
+        setSaveState("error")
+      }
+    }, 700)
+  }
+
+  const handleNumberChange = (field, value) => {
+    const nextValue =
+      value === "" ? "" : Number(value)
+
+    scheduleSave(
+      {
+        [field]:
+          nextValue === "" ? null : nextValue,
+      },
+      {
+        [field]: nextValue,
+      },
     )
+  }
 
-  const imageUrl =
-    details.imageUrl ||
-    details.image?.url ||
-    details.image ||
-    exercise?.imageUrl ||
-    exercise?.image?.url ||
-    exercise?.image ||
-    ""
-
-  const isTabata =
-    String(
-      details.category ||
-        details.workoutType ||
-        exercise?.category ||
-        exercise?.workoutType ||
-        "",
-    ).toLowerCase() ===
-    "tabata"
+  const handleTextChange = (field, value) => {
+    scheduleSave(
+      { [field]: value },
+      { [field]: value },
+    )
+  }
 
   return (
-    <article className="rounded-3xl border border-white/10 bg-white/5 p-5">
+    <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+      <div className="flex items-start gap-4 p-5">
+        <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-2xl bg-black">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={exerciseName}
+              className="h-full w-full object-cover"
+              onError={(event) => {
+                const image = event.currentTarget
+                image.style.display = "none"
 
-      <div className="flex items-start gap-4">
+                const fallback =
+                  image.parentElement?.querySelector(
+                    "[data-program-exercise-image-fallback]",
+                  )
 
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={exerciseName}
-            className="h-16 w-16 shrink-0 rounded-2xl object-cover"
-          />
-        ) : (
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-black text-gray-600">
-            <GripVertical
-              size={18}
+                if (fallback) {
+                  fallback.classList.remove("hidden")
+                }
+              }}
             />
+          ) : null}
+
+          <div
+            data-program-exercise-image-fallback
+            className={`${
+              imageUrl ? "hidden " : ""
+            }absolute inset-0 flex flex-col items-center justify-center bg-slate-900`}
+          >
+            <Dumbbell
+              size={28}
+              className="text-gray-600"
+            />
+
+            <span className="mt-1 text-[8px] font-black uppercase tracking-wider text-gray-700">
+              No Image
+            </span>
           </div>
-        )}
+        </div>
 
         <div className="min-w-0 flex-1">
-
           <div className="flex flex-wrap items-center gap-2">
-
             <span className="text-[10px] font-black text-yellow-400">
               EXERCISE {index + 1}
             </span>
 
             <span className="rounded-full bg-lime-400/10 px-2 py-1 text-[9px] font-black uppercase text-lime-400">
-              {category}
+              {exercise.category ||
+                exerciseData?.category ||
+                "Exercise"}
             </span>
-
           </div>
 
           <h3 className="mt-1 text-base font-black">
@@ -1130,177 +1313,144 @@ function ProgramExercise({
           </h3>
 
           <p className="mt-1 text-xs text-gray-600">
-            {muscleGroup} · {equipmentText}
+            {muscleGroup}
+            {" · "}
+            {equipmentText}
           </p>
-
         </div>
 
         <button
           type="button"
-          onClick={
-            onRemove
-          }
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-400/10 text-red-400"
+          onClick={onRemove}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-400/10 text-red-400 transition hover:bg-red-400/20"
           aria-label={`Remove ${exerciseName}`}
+          title="Remove exercise"
         >
-
-          <Trash2
-            size={15}
-          />
-
+          <Trash2 size={15} />
         </button>
-
       </div>
 
-      {isTabata ? (
-        <div className="mt-5 grid grid-cols-3 gap-3">
+      <div className="border-t border-white/10 px-5 pb-5">
+        {isTabata ? (
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            <NumberField
+              label="Work Seconds"
+              value={draft.workInterval}
+              onChange={(value) =>
+                handleNumberChange(
+                  "workInterval",
+                  value,
+                )
+              }
+            />
 
-          <NumberField
-            label="Work Seconds"
-            value={
-              exercise.workInterval
-            }
-            onChange={(
+            <NumberField
+              label="Rest Seconds"
+              value={draft.restInterval}
+              onChange={(value) =>
+                handleNumberChange(
+                  "restInterval",
+                  value,
+                )
+              }
+            />
+
+            <NumberField
+              label="Rounds"
+              value={draft.rounds}
+              onChange={(value) =>
+                handleNumberChange(
+                  "rounds",
+                  value,
+                )
+              }
+            />
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <NumberField
+              label="Sets"
+              value={draft.sets}
+              onChange={(value) =>
+                handleNumberChange(
+                  "sets",
+                  value,
+                )
+              }
+            />
+
+            <NumberField
+              label="Reps"
+              value={draft.reps}
+              onChange={(value) =>
+                handleNumberChange(
+                  "reps",
+                  value,
+                )
+              }
+            />
+
+            <TextField
+              label="Weight"
+              value={draft.weight}
+              placeholder="e.g. 20 kg"
+              onChange={(value) =>
+                handleTextChange(
+                  "weight",
+                  value,
+                )
+              }
+            />
+
+            <TextField
+              label="Rest"
+              value={draft.rest}
+              placeholder="e.g. 60 sec"
+              onChange={(value) =>
+                handleTextChange(
+                  "rest",
+                  value,
+                )
+              }
+            />
+          </div>
+        )}
+
+        <TextField
+          label="Trainer Notes"
+          value={draft.notes}
+          placeholder="Optional instructions for members"
+          onChange={(value) =>
+            handleTextChange(
+              "notes",
               value,
-            ) =>
-              onUpdate({
-                workInterval:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
+            )
+          }
+        />
 
-          <NumberField
-            label="Rest Seconds"
-            value={
-              exercise.restInterval
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                restInterval:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
-
-          <NumberField
-            label="Rounds"
-            value={
-              exercise.rounds
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                rounds:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
-
+        <div className="mt-3 flex min-h-4 justify-end">
+          {saveState === "saving" ? (
+            <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-yellow-400">
+              <Loader2
+                size={11}
+                className="animate-spin"
+              />
+              Saving...
+            </span>
+          ) : saveState === "error" ? (
+            <span className="text-[9px] font-black uppercase tracking-wider text-red-400">
+              Save failed
+            </span>
+          ) : (
+            <span className="text-[9px] font-black uppercase tracking-wider text-lime-400/70">
+              Saved
+            </span>
+          )}
         </div>
-      ) : (
-        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-
-          <NumberField
-            label="Sets"
-            value={
-              exercise.sets
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                sets:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
-
-          <NumberField
-            label="Reps"
-            value={
-              exercise.reps
-            }
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                reps:
-                  Number(
-                    value,
-                  ),
-              })
-            }
-          />
-
-          <TextField
-            label="Weight"
-            value={
-              exercise.weight
-            }
-            placeholder="e.g. 20 kg"
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                weight: value,
-              })
-            }
-          />
-
-          <TextField
-            label="Rest"
-            value={
-              exercise.rest
-            }
-            placeholder="e.g. 60 sec"
-            onChange={(
-              value,
-            ) =>
-              onUpdate({
-                rest: value,
-              })
-            }
-          />
-
-        </div>
-      )}
-
-      <TextField
-        label="Trainer Notes"
-        value={
-          exercise.notes
-        }
-        placeholder="Optional instructions for members"
-        onChange={(
-          value,
-        ) =>
-          onUpdate({
-            notes: value,
-          })
-        }
-      />
-
+      </div>
     </article>
   )
 }
-
-/*
-|--------------------------------------------------------------------------
-| Field
-|--------------------------------------------------------------------------
-*/
 
 function Field({
   label,
@@ -1366,7 +1516,7 @@ function TextField({
 
       <input
         value={
-          value || ""
+          value ?? ""
         }
         placeholder={
           placeholder
@@ -1465,96 +1615,6 @@ function getProgramId(
     program?._id ||
     program?.id ||
     ""
-  )
-}
-
-function formatEquipment(
-  equipment,
-) {
-  if (
-    Array.isArray(equipment)
-  ) {
-    return equipment
-      .map((item) =>
-        String(item)
-          .replace(/^["\\]+|["\\]+$/g, "")
-          .trim(),
-      )
-      .filter(Boolean)
-      .join(", ") || "No equipment"
-  }
-
-  if (
-    equipment === null ||
-    equipment === undefined ||
-    equipment === ""
-  ) {
-    return "No equipment"
-  }
-
-  const value = String(
-    equipment,
-  ).trim()
-
-  try {
-    const parsed =
-      JSON.parse(value)
-
-    if (
-      Array.isArray(parsed)
-    ) {
-      return parsed
-        .map((item) =>
-          String(item)
-            .replace(/^["\\]+|["\\]+$/g, "")
-            .trim(),
-        )
-        .filter(Boolean)
-        .join(", ") || "No equipment"
-    }
-
-    if (
-      typeof parsed ===
-        "string" &&
-      parsed.trim()
-    ) {
-      return parsed
-        .replace(/^["\\]+|["\\]+$/g, "")
-        .trim()
-    }
-  } catch {
-    // Keep the original value if it is not valid JSON.
-  }
-
-  return value
-    .replace(/\\["]/g, '"')
-    .replace(/^\["|\"]$/g, "")
-    .replace(/^["\\]+|["\\]+$/g, "")
-    .trim() || "No equipment"
-}
-
-function findExerciseDetails(
-  programExercise,
-  exerciseLibrary,
-) {
-  const exerciseId =
-    getExerciseId(
-      programExercise,
-    )
-
-  if (!exerciseId) {
-    return null
-  }
-
-  return (
-    exerciseLibrary.find(
-      (exercise) =>
-        String(
-          exercise?._id ||
-            exercise?.id ||
-            "",
-        ) === String(exerciseId),
-    ) || null
   )
 }
 

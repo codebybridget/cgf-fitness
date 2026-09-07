@@ -1,108 +1,342 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react"
 
 import {
-  Check,
-  Dumbbell,
-  Edit3,
-  Image,
-  Plus,
-  Search,
-  Trash2,
-  Video,
-  X,
-} from "lucide-react"
+  useLocation,
+  useNavigate,
+} from "react-router-dom"
 
 import {
   createExercise,
-  deleteExercise as deleteExerciseApi,
+  createProgram,
+  deleteExercise,
   getExercises,
   updateExercise,
 } from "../../api/api.js"
 
-/*
-|--------------------------------------------------------------------------
-| Categories
-|--------------------------------------------------------------------------
-*/
-
-const categories = [
+const CATEGORY_OPTIONS = [
   "Upper Body",
   "Lower Body",
-  "Core",
   "CrossFit",
   "Tabata",
 ]
 
-/*
-|--------------------------------------------------------------------------
-| Recommendation Options
-|--------------------------------------------------------------------------
-*/
-
-const genderOptions = [
-  "Male",
-  "Female",
-]
-
-const fitnessGoalOptions = [
-  "Lose Weight",
-  "Keep Fit",
-  "Gain Weight",
-  "Train to Become a Trainer",
-]
-
-const difficultyOptions = [
+const DIFFICULTY_OPTIONS = [
   "Beginner",
   "Intermediate",
   "Advanced",
 ]
 
-/*
-|--------------------------------------------------------------------------
-| Empty Exercise
-|--------------------------------------------------------------------------
-*/
-
-const emptyExercise = {
+const EMPTY_FORM = {
   name: "",
   category: "Upper Body",
   muscleGroup: "",
-  secondaryMuscles: [],
-  targetGender: [
-    "Male",
-    "Female",
-  ],
-  fitnessGoals: [
-    "Keep Fit",
-  ],
-  difficulty: "Beginner",
-  equipment: [],
+  secondaryMuscles: "",
+  targetGender: ["Male", "Female"],
+  fitnessGoals: ["Keep Fit"],
   description: "",
   instructions: "",
   safetyTips: "",
-  sets: 3,
-  reps: 10,
-  weight: "",
-  duration: "",
-  rest: "60 sec",
+  equipment: "",
+  difficulty: "Beginner",
+  defaultSets: 3,
+  defaultReps: "",
+  defaultDuration: "",
+  defaultRest: 60,
   caloriesEstimate: "",
-  mediaType: "image",
-  mediaUrl: "",
-  status: "Active",
+  imageUrl: "",
+  videoUrl: "",
+  isActive: true,
 }
 
 /*
 |--------------------------------------------------------------------------
-| Workouts
+| Helpers
 |--------------------------------------------------------------------------
 */
 
-function Workouts() {
+function normalizeArray(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        String(item).trim(),
+      )
+      .filter(Boolean)
+  }
+
+  if (!value) {
+    return []
+  }
+
+  return String(value)
+    .split(",")
+    .map((item) =>
+      item.trim(),
+    )
+    .filter(Boolean)
+}
+
+function exerciseToForm(
+  exercise,
+) {
+  return {
+    name:
+      exercise.name || "",
+
+    category:
+      exercise.category ||
+      "Upper Body",
+
+    muscleGroup:
+      exercise.muscleGroup ||
+      "",
+
+    secondaryMuscles:
+      Array.isArray(exercise.secondaryMuscles)
+        ? exercise.secondaryMuscles.join(", ")
+        : "",
+
+    targetGender:
+      Array.isArray(exercise.targetGender) &&
+      exercise.targetGender.length
+        ? exercise.targetGender
+        : ["Male", "Female"],
+
+    fitnessGoals:
+      Array.isArray(exercise.fitnessGoals)
+        ? exercise.fitnessGoals
+        : [],
+
+    description:
+      exercise.description ||
+      "",
+
+    instructions:
+      Array.isArray(
+        exercise.instructions,
+      )
+        ? exercise.instructions.join(
+            "\n",
+          )
+        : exercise.instructions || "",
+
+    safetyTips:
+      Array.isArray(
+        exercise.safetyTips,
+      )
+        ? exercise.safetyTips.join(
+            "\n",
+          )
+        : exercise.safetyTips || "",
+
+    equipment:
+      Array.isArray(
+        exercise.equipment,
+      )
+        ? exercise.equipment.join(
+            ", ",
+          )
+        : "",
+
+    difficulty:
+      exercise.difficulty ||
+      "Beginner",
+
+    defaultSets:
+      exercise.defaultSets ??
+      3,
+
+    defaultReps:
+      exercise.defaultReps ??
+      "",
+
+    defaultDuration:
+      exercise.defaultDuration ??
+      "",
+
+    defaultRest:
+      exercise.defaultRest ??
+      60,
+
+    caloriesEstimate:
+      exercise.caloriesEstimate ??
+      "",
+
+    imageUrl:
+      exercise.imageUrl || "",
+
+    videoUrl:
+      exercise.videoUrl || "",
+
+    isActive:
+      exercise.isActive !== false,
+  }
+}
+
+function buildPayload(
+  form,
+) {
+  return {
+    name:
+      form.name.trim(),
+
+    category:
+      form.category,
+
+    muscleGroup:
+      form.muscleGroup.trim(),
+
+    secondaryMuscles:
+      normalizeArray(
+        form.secondaryMuscles,
+      ),
+
+    targetGender:
+      Array.isArray(form.targetGender)
+        ? form.targetGender
+        : ["Male", "Female"],
+
+    fitnessGoals:
+      Array.isArray(form.fitnessGoals)
+        ? form.fitnessGoals
+        : [],
+
+    description:
+      form.description.trim(),
+
+    instructions:
+      normalizeInstructions(
+        form.instructions,
+      ),
+
+    safetyTips:
+      normalizeInstructions(
+        form.safetyTips,
+      ),
+
+    equipment:
+      normalizeArray(
+        form.equipment,
+      ),
+
+    difficulty:
+      form.difficulty,
+
+    defaultSets:
+      Number(
+        form.defaultSets,
+      ) || 3,
+
+    defaultReps:
+      form.defaultReps ===
+        "" ||
+      form.defaultReps ===
+        null
+        ? null
+        : Number(
+            form.defaultReps,
+          ),
+
+    defaultDuration:
+      form.defaultDuration ===
+        "" ||
+      form.defaultDuration ===
+        null
+        ? null
+        : Number(
+            form.defaultDuration,
+          ),
+
+    defaultRest:
+      Number(
+        form.defaultRest,
+      ) || 0,
+
+    caloriesEstimate:
+      form.caloriesEstimate ===
+        "" ||
+      form.caloriesEstimate ===
+        null
+        ? null
+        : Number(
+            form.caloriesEstimate,
+          ),
+
+    isActive:
+      form.isActive !== false,
+  }
+}
+
+function normalizeInstructions(
+  value,
+) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        String(item).trim(),
+      )
+      .filter(Boolean)
+  }
+
+  if (!value) {
+    return []
+  }
+
+  return String(value)
+    .split("\n")
+    .map((item) =>
+      item.trim(),
+    )
+    .filter(Boolean)
+}
+
+/*
+|--------------------------------------------------------------------------
+| File size formatting
+|--------------------------------------------------------------------------
+*/
+
+function formatFileSize(
+  bytes,
+) {
+  if (!bytes) {
+    return "0 KB"
+  }
+
+  const megabytes =
+    bytes /
+    1024 /
+    1024
+
+  if (
+    megabytes >= 1
+  ) {
+    return `${megabytes.toFixed(
+      1,
+    )} MB`
+  }
+
+  return `${Math.max(
+    1,
+    Math.round(
+      bytes / 1024,
+    ),
+  )} KB`
+}
+
+/*
+|--------------------------------------------------------------------------
+| Main component
+|--------------------------------------------------------------------------
+*/
+
+export default function Exercises() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
   const [
     exercises,
     setExercises,
@@ -119,14 +353,29 @@ function Workouts() {
   ] = useState(false)
 
   const [
-    searchTerm,
-    setSearchTerm,
+    error,
+    setError,
+  ] = useState("")
+
+  const [
+    success,
+    setSuccess,
+  ] = useState("")
+
+  const [
+    search,
+    setSearch,
   ] = useState("")
 
   const [
     categoryFilter,
     setCategoryFilter,
-  ] = useState("all")
+  ] = useState("All")
+
+  const [
+    difficultyFilter,
+    setDifficultyFilter,
+  ] = useState("All")
 
   const [
     showForm,
@@ -139,24 +388,100 @@ function Workouts() {
   ] = useState(null)
 
   const [
-    formData,
-    setFormData,
-  ] = useState({
-    ...emptyExercise,
-  })
+    deleteConfirmExercise,
+    setDeleteConfirmExercise,
+  ] = useState(null)
+
+  /*
+  |--------------------------------------------------------------------------
+  | Program creation mode
+  |--------------------------------------------------------------------------
+  */
+
+  const createProgramMode =
+    Boolean(
+      location.state?.createProgram,
+    )
 
   const [
-    selectedFile,
-    setSelectedFile,
+    selectedProgramExercises,
+    setSelectedProgramExercises,
+  ] = useState([])
+
+  const [
+    showProgramForm,
+    setShowProgramForm,
+  ] = useState(false)
+
+  const [
+    programName,
+    setProgramName,
+  ] = useState("")
+
+  const [
+    programWorkoutType,
+    setProgramWorkoutType,
+  ] = useState("Lower Body")
+
+  const [
+    creatingProgram,
+    setCreatingProgram,
+  ] = useState(false)
+
+  const [
+    programError,
+    setProgramError,
+  ] = useState("")
+
+  const [
+    form,
+    setForm,
+  ] = useState(
+    EMPTY_FORM,
+  )
+
+  /*
+  |--------------------------------------------------------------------------
+  | Uploaded files
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    imageFile,
+    setImageFile,
   ] = useState(null)
 
   const [
-    previewUrl,
-    setPreviewUrl,
+    videoFile,
+    setVideoFile,
+  ] = useState(null)
+
+  /*
+  |--------------------------------------------------------------------------
+  | Local previews
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    imagePreview,
+    setImagePreview,
   ] = useState("")
 
-  const fileInputRef =
-    useRef(null)
+  const [
+    videoPreview,
+    setVideoPreview,
+  ] = useState("")
+
+  /*
+  |--------------------------------------------------------------------------
+  | Media tab
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    mediaTab,
+    setMediaTab,
+  ] = useState("image")
 
   /*
   |--------------------------------------------------------------------------
@@ -168,33 +493,30 @@ function Workouts() {
     async () => {
       try {
         setLoading(true)
+        setError("")
 
         const response =
           await getExercises()
 
-        const data =
-          response?.data ||
-          response
-
-        const serverExercises =
-          data?.exercises ||
-          []
-
         setExercises(
-          serverExercises.map(
-            normalizeExercise,
-          ),
+          Array.isArray(
+            response?.exercises,
+          )
+            ? response.exercises
+            : [],
         )
-      } catch (error) {
+      } catch (
+        loadError
+      ) {
         console.error(
           "Unable to load exercises:",
-          error,
+          loadError,
         )
 
-        window.alert(
-          error.response?.data
-            ?.message ||
-            error.message ||
+        setError(
+          loadError.response
+            ?.data?.message ||
+            loadError.message ||
             "Unable to load exercises.",
         )
       } finally {
@@ -208,137 +530,73 @@ function Workouts() {
 
   /*
   |--------------------------------------------------------------------------
-  | Normalize backend exercise
+  | Create local image preview
   |--------------------------------------------------------------------------
   */
 
-  function normalizeExercise(
-    exercise,
-  ) {
-    const hasVideo =
-      Boolean(
-        exercise.videoUrl,
+  useEffect(() => {
+    if (!imageFile) {
+      setImagePreview(
+        form.imageUrl ||
+          "",
       )
 
-    const hasImage =
-      Boolean(
-        exercise.imageUrl,
-      )
-
-    const mediaType =
-      hasVideo
-        ? "video"
-        : "image"
-
-    const mediaUrl =
-      hasVideo
-        ? exercise.videoUrl
-        : exercise.imageUrl
-
-    return {
-      ...exercise,
-
-      id:
-        exercise._id ||
-        exercise.id,
-
-      sets:
-        exercise.defaultSets ??
-        3,
-
-      reps:
-        exercise.defaultReps ??
-        10,
-
-      weight:
-        exercise.weight ||
-        "",
-
-      duration:
-        exercise.defaultDuration ??
-        "",
-
-      caloriesEstimate:
-        exercise.caloriesEstimate ??
-        "",
-
-      rest:
-        exercise.defaultRest !=
-        null
-          ? `${exercise.defaultRest} sec`
-          : "60 sec",
-
-      instructions:
-        Array.isArray(
-          exercise.instructions,
-        )
-          ? exercise.instructions.join(
-              "\n",
-            )
-          : exercise.instructions ||
-            "",
-
-      safetyTips:
-        Array.isArray(
-          exercise.safetyTips,
-        )
-          ? exercise.safetyTips.join(
-              "\n",
-            )
-          : exercise.safetyTips ||
-            "",
-
-      secondaryMuscles:
-        Array.isArray(
-          exercise.secondaryMuscles,
-        )
-          ? exercise.secondaryMuscles
-          : [],
-
-      targetGender:
-        Array.isArray(
-          exercise.targetGender,
-        ) &&
-        exercise.targetGender.length
-          ? exercise.targetGender
-          : [
-              "Male",
-              "Female",
-            ],
-
-      fitnessGoals:
-        Array.isArray(
-          exercise.fitnessGoals,
-        )
-          ? exercise.fitnessGoals
-          : [],
-
-      equipment:
-        Array.isArray(
-          exercise.equipment,
-        )
-          ? exercise.equipment
-          : [],
-
-      difficulty:
-        exercise.difficulty ||
-        "Beginner",
-
-      description:
-        exercise.description ||
-        "",
-
-      mediaType,
-
-      mediaUrl,
-
-      status:
-        exercise.isActive ===
-        false
-          ? "Inactive"
-          : "Active",
+      return undefined
     }
-  }
+
+    const previewUrl =
+      URL.createObjectURL(
+        imageFile,
+      )
+
+    setImagePreview(
+      previewUrl,
+    )
+
+    return () => {
+      URL.revokeObjectURL(
+        previewUrl,
+      )
+    }
+  }, [
+    imageFile,
+    form.imageUrl,
+  ])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Create local video preview
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (!videoFile) {
+      setVideoPreview(
+        form.videoUrl ||
+          "",
+      )
+
+      return undefined
+    }
+
+    const previewUrl =
+      URL.createObjectURL(
+        videoFile,
+      )
+
+    setVideoPreview(
+      previewUrl,
+    )
+
+    return () => {
+      URL.revokeObjectURL(
+        previewUrl,
+      )
+    }
+  }, [
+    videoFile,
+    form.videoUrl,
+  ])
 
   /*
   |--------------------------------------------------------------------------
@@ -348,235 +606,123 @@ function Workouts() {
 
   const filteredExercises =
     useMemo(() => {
-      const search =
-        searchTerm
+      const query =
+        search
           .trim()
           .toLowerCase()
 
       return exercises.filter(
         (exercise) => {
           const matchesSearch =
-            !search ||
+            !query ||
             exercise.name
               ?.toLowerCase()
-              .includes(search) ||
+              .includes(query) ||
             exercise.muscleGroup
               ?.toLowerCase()
-              .includes(search) ||
-            exercise.secondaryMuscles
-              ?.join(" ")
+              .includes(query) ||
+            exercise.description
               ?.toLowerCase()
-              .includes(search)
+              .includes(query)
 
           const matchesCategory =
             categoryFilter ===
-              "all" ||
+              "All" ||
             exercise.category ===
               categoryFilter
 
+          const matchesDifficulty =
+            difficultyFilter ===
+              "All" ||
+            exercise.difficulty ===
+              difficultyFilter
+
           return (
             matchesSearch &&
-            matchesCategory
+            matchesCategory &&
+            matchesDifficulty
           )
         },
       )
     }, [
       exercises,
-      searchTerm,
+      search,
       categoryFilter,
+      difficultyFilter,
     ])
 
   /*
   |--------------------------------------------------------------------------
-  | Create form
+  | Open create form
   |--------------------------------------------------------------------------
   */
 
   const openCreateForm =
     () => {
-      setEditingExercise(null)
+      setEditingExercise(
+        null,
+      )
 
-      setFormData({
-        ...emptyExercise,
-
-        secondaryMuscles: [],
-
-        targetGender: [
-          "Male",
-          "Female",
-        ],
-
-        fitnessGoals: [
-          "Keep Fit",
-        ],
-
-        equipment: [],
+      setForm({
+        ...EMPTY_FORM,
       })
 
-      setSelectedFile(null)
+      setImageFile(null)
+      setVideoFile(null)
 
-      setPreviewUrl("")
+      setImagePreview("")
+      setVideoPreview("")
 
-      if (
-        fileInputRef.current
-      ) {
-        fileInputRef.current.value =
-          ""
-      }
+      setMediaTab("image")
+
+      setError("")
+      setSuccess("")
 
       setShowForm(true)
     }
 
   /*
   |--------------------------------------------------------------------------
-  | Edit form
+  | Open edit form
   |--------------------------------------------------------------------------
   */
 
-  const openEditForm = (
-    exercise,
-  ) => {
-    setEditingExercise(
-      exercise,
-    )
+  const openEditForm =
+    (exercise) => {
+      setEditingExercise(
+        exercise,
+      )
 
-    setFormData({
-      name:
-        exercise.name ||
-        "",
+      setForm(
+        exerciseToForm(
+          exercise,
+        ),
+      )
 
-      category:
-        exercise.category ||
-        "Upper Body",
+      setImageFile(null)
+      setVideoFile(null)
 
-      muscleGroup:
-        exercise.muscleGroup ||
-        "",
+      setImagePreview(
+        exercise.imageUrl ||
+          "",
+      )
 
-      secondaryMuscles:
-        Array.isArray(
-          exercise.secondaryMuscles,
-        )
-          ? exercise.secondaryMuscles
-          : [],
-
-      targetGender:
-        Array.isArray(
-          exercise.targetGender,
-        ) &&
-        exercise.targetGender.length
-          ? exercise.targetGender
-          : [
-              "Male",
-              "Female",
-            ],
-
-      fitnessGoals:
-        Array.isArray(
-          exercise.fitnessGoals,
-        )
-          ? exercise.fitnessGoals
-          : [],
-
-      difficulty:
-        exercise.difficulty ||
-        "Beginner",
-
-      equipment:
-        Array.isArray(
-          exercise.equipment,
-        )
-          ? exercise.equipment
-          : [],
-
-      description:
-        exercise.description ||
-        "",
-
-      instructions:
-        Array.isArray(
-          exercise.instructions,
-        )
-          ? exercise.instructions.join(
-              "\n",
-            )
-          : exercise.instructions ||
-            "",
-
-      safetyTips:
-        Array.isArray(
-          exercise.safetyTips,
-        )
-          ? exercise.safetyTips.join(
-              "\n",
-            )
-          : exercise.safetyTips ||
-            "",
-
-      sets:
-        exercise.defaultSets ??
-        exercise.sets ??
-        3,
-
-      reps:
-        exercise.defaultReps ??
-        exercise.reps ??
-        10,
-
-      weight:
-        exercise.weight ||
-        "",
-
-      duration:
-        exercise.defaultDuration ??
-        exercise.duration ??
-        "",
-
-      rest:
-        exercise.defaultRest !=
-        null
-          ? `${exercise.defaultRest} sec`
-          : exercise.rest ||
-            "60 sec",
-
-      caloriesEstimate:
-        exercise.caloriesEstimate ??
-        "",
-
-      mediaType:
-        exercise.videoUrl
-          ? "video"
-          : "image",
-
-      mediaUrl:
+      setVideoPreview(
         exercise.videoUrl ||
-        exercise.imageUrl ||
-        "",
+          "",
+      )
 
-      status:
-        exercise.isActive ===
-        false
-          ? "Inactive"
-          : "Active",
-    })
+      setMediaTab(
+        exercise.imageUrl
+          ? "image"
+          : "video",
+      )
 
-    setSelectedFile(null)
+      setError("")
+      setSuccess("")
 
-    setPreviewUrl(
-      exercise.videoUrl ||
-        exercise.imageUrl ||
-        "",
-    )
-
-    if (
-      fileInputRef.current
-    ) {
-      fileInputRef.current.value =
-        ""
+      setShowForm(true)
     }
-
-    setShowForm(true)
-  }
 
   /*
   |--------------------------------------------------------------------------
@@ -584,233 +730,80 @@ function Workouts() {
   |--------------------------------------------------------------------------
   */
 
-  const closeForm = () => {
-    setShowForm(false)
-
-    setEditingExercise(
-      null,
-    )
-
-    setFormData({
-      ...emptyExercise,
-    })
-
-    setSelectedFile(null)
-
-    setPreviewUrl("")
-
-    if (
-      fileInputRef.current
-    ) {
-      fileInputRef.current.value =
-        ""
-    }
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Form changes
-  |--------------------------------------------------------------------------
-  */
-
-  const handleChange = (
-    event,
-  ) => {
-    const {
-      name,
-      value,
-    } = event.target
-
-    setFormData(
-      (current) => ({
-        ...current,
-        [name]: value,
-      }),
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Toggle array option
-  |--------------------------------------------------------------------------
-  */
-
-  const toggleArrayValue = (
-    field,
-    value,
-  ) => {
-    setFormData(
-      (current) => {
-        const currentValues =
-          Array.isArray(
-            current[field],
-          )
-            ? current[field]
-            : []
-
-        const exists =
-          currentValues.includes(
-            value,
-          )
-
-        return {
-          ...current,
-
-          [field]: exists
-            ? currentValues.filter(
-                (item) =>
-                  item !== value,
-              )
-            : [
-                ...currentValues,
-                value,
-              ],
-        }
-      },
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Secondary muscles
-  |--------------------------------------------------------------------------
-  */
-
-  const handleSecondaryMusclesChange =
-    (event) => {
-      const values =
-        event.target.value
-          .split(",")
-          .map(
-            (item) =>
-              item.trim(),
-          )
-          .filter(Boolean)
-
-      setFormData(
-        (current) => ({
-          ...current,
-          secondaryMuscles:
-            values,
-        }),
-      )
-    }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Equipment
-  |--------------------------------------------------------------------------
-  */
-
-  const handleEquipmentChange =
-    (event) => {
-      const values =
-        event.target.value
-          .split(",")
-          .map(
-            (item) =>
-              item.trim(),
-          )
-          .filter(Boolean)
-
-      setFormData(
-        (current) => ({
-          ...current,
-          equipment:
-            values,
-        }),
-      )
-    }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Media type
-  |--------------------------------------------------------------------------
-  */
-
-  const handleMediaTypeChange =
-    (type) => {
-      setFormData(
-        (current) => ({
-          ...current,
-
-          mediaType:
-            type,
-
-          mediaUrl:
-            editingExercise
-              ? type ===
-                "video"
-                ? editingExercise.videoUrl ||
-                  ""
-                : editingExercise.imageUrl ||
-                  ""
-              : "",
-        }),
-      )
-
-      setSelectedFile(null)
-
-      if (
-        editingExercise
-      ) {
-        setPreviewUrl(
-          type === "video"
-            ? editingExercise.videoUrl ||
-                ""
-            : editingExercise.imageUrl ||
-                "",
-        )
-      } else {
-        setPreviewUrl("")
-      }
-
-      if (
-        fileInputRef.current
-      ) {
-        fileInputRef.current.value =
-          ""
-      }
-    }
-
-  /*
-  |--------------------------------------------------------------------------
-  | File picker
-  |--------------------------------------------------------------------------
-  */
-
-  const openFilePicker =
+  const closeForm =
     () => {
-      fileInputRef.current?.click()
+      if (saving) {
+        return
+      }
+
+      setShowForm(false)
+
+      setEditingExercise(
+        null,
+      )
+
+      setForm({
+        ...EMPTY_FORM,
+      })
+
+      setImageFile(null)
+      setVideoFile(null)
+
+      setImagePreview("")
+      setVideoPreview("")
     }
 
   /*
   |--------------------------------------------------------------------------
-  | File selection
+  | Handle normal fields
   |--------------------------------------------------------------------------
   */
 
-  const handleFileChange = (
-    event,
-  ) => {
-    const file =
-      event.target.files?.[0]
+  const handleChange =
+    (event) => {
+      const {
+        name,
+        value,
+      } = event.target
 
-    if (!file) {
-      return
+      setForm(
+        (current) => ({
+          ...current,
+          [name]: value,
+        }),
+      )
     }
 
-    if (
-      formData.mediaType ===
-      "image"
-    ) {
+  /*
+  |--------------------------------------------------------------------------
+  | Image selection
+  |--------------------------------------------------------------------------
+  */
+
+  const handleImageChange =
+    (event) => {
+      const file =
+        event.target
+          .files?.[0]
+
+      if (!file) {
+        return
+      }
+
+      const allowedTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+      ]
+
       if (
-        !file.type.startsWith(
-          "image/",
+        !allowedTypes.includes(
+          file.type,
         )
       ) {
-        window.alert(
-          "Please select an image file.",
+        setError(
+          "Please select a JPG, PNG, WEBP or GIF image.",
         )
 
         event.target.value =
@@ -818,19 +811,18 @@ function Workouts() {
 
         return
       }
-    }
 
-    if (
-      formData.mediaType ===
-      "video"
-    ) {
+      const maxSize =
+        10 *
+        1024 *
+        1024
+
       if (
-        !file.type.startsWith(
-          "video/",
-        )
+        file.size >
+        maxSize
       ) {
-        window.alert(
-          "Please select a video file.",
+        setError(
+          "Image must be 10 MB or smaller.",
         )
 
         event.target.value =
@@ -838,155 +830,114 @@ function Workouts() {
 
         return
       }
-    }
 
-    /*
-    |--------------------------------------------------------------------------
-    | File size validation
-    |--------------------------------------------------------------------------
-    */
+      setError("")
 
-    const maxSize =
-      formData.mediaType ===
-      "video"
-        ? 50 *
-          1024 *
-          1024
-        : 5 *
-          1024 *
-          1024
-
-    if (
-      file.size >
-      maxSize
-    ) {
-      window.alert(
-        formData.mediaType ===
-          "video"
-          ? "Video must be 50 MB or less."
-          : "Image must be 5 MB or less.",
-      )
-
-      event.target.value =
-        ""
-
-      return
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Revoke previous blob URL
-    |--------------------------------------------------------------------------
-    */
-
-    if (
-      previewUrl?.startsWith(
-        "blob:",
-      )
-    ) {
-      URL.revokeObjectURL(
-        previewUrl,
-      )
-    }
-
-    setSelectedFile(
-      file,
-    )
-
-    const objectUrl =
-      URL.createObjectURL(
+      setImageFile(
         file,
       )
 
-    setPreviewUrl(
-      objectUrl,
-    )
-
-    /*
-    |--------------------------------------------------------------------------
-    | Do not save blob URL
-    |--------------------------------------------------------------------------
-    */
-
-    setFormData(
-      (current) => ({
-        ...current,
-        mediaUrl: "",
-      }),
-    )
-  }
+      setMediaTab(
+        "image",
+      )
+    }
 
   /*
   |--------------------------------------------------------------------------
-  | Clean preview URL
+  | Video selection
   |--------------------------------------------------------------------------
   */
 
-  useEffect(() => {
-    return () => {
+  const handleVideoChange =
+    (event) => {
+      const file =
+        event.target
+          .files?.[0]
+
+      if (!file) {
+        return
+      }
+
+      const allowedTypes = [
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
+        "video/x-msvideo",
+      ]
+
       if (
-        previewUrl?.startsWith(
-          "blob:",
+        !allowedTypes.includes(
+          file.type,
         )
       ) {
-        URL.revokeObjectURL(
-          previewUrl,
+        setError(
+          "Please select an MP4, WEBM, MOV or AVI video.",
         )
+
+        event.target.value =
+          ""
+
+        return
       }
+
+      const maxSize =
+        100 *
+        1024 *
+        1024
+
+      if (
+        file.size >
+        maxSize
+      ) {
+        setError(
+          "Video must be 100 MB or smaller.",
+        )
+
+        event.target.value =
+          ""
+
+        return
+      }
+
+      setError("")
+
+      setVideoFile(
+        file,
+      )
+
+      setMediaTab(
+        "video",
+      )
     }
-  }, [previewUrl])
 
   /*
   |--------------------------------------------------------------------------
-  | Submit
+  | Submit exercise
   |--------------------------------------------------------------------------
   */
 
   const handleSubmit =
-    async (
-      event,
-    ) => {
+    async (event) => {
       event.preventDefault()
 
+      setError("")
+      setSuccess("")
+
       if (
-        !formData.name.trim()
+        !form.name.trim()
       ) {
-        window.alert(
-          "Please enter an exercise name.",
+        setError(
+          "Exercise name is required.",
         )
 
         return
       }
 
       if (
-        !formData.muscleGroup?.trim()
+        !form.category
       ) {
-        window.alert(
-          "Please enter the primary muscle group.",
-        )
-
-        return
-      }
-
-      if (
-        !formData.targetGender ||
-        formData.targetGender.length ===
-          0
-      ) {
-        window.alert(
-          "Please select at least one target gender.",
-        )
-
-        return
-      }
-
-      if (
-        !formData.fitnessGoals ||
-        formData.fitnessGoals.length ===
-          0
-      ) {
-        window.alert(
-          "Please select at least one fitness goal.",
+        setError(
+          "Exercise category is required.",
         )
 
         return
@@ -995,235 +946,275 @@ function Workouts() {
       try {
         setSaving(true)
 
+        const payload =
+          buildPayload(
+            form,
+          )
+
         /*
         |--------------------------------------------------------------------------
-        | Build API payload
+        | Build multipart form
         |--------------------------------------------------------------------------
         */
 
-        const payload = {
-          name:
-            formData.name.trim(),
+        const formData =
+          new FormData()
 
-          category:
-            formData.category,
+        formData.append(
+          "name",
+          payload.name,
+        )
 
-          muscleGroup:
-            formData.muscleGroup.trim(),
+        formData.append(
+          "category",
+          payload.category,
+        )
 
-          secondaryMuscles:
-            Array.isArray(
-              formData.secondaryMuscles,
-            )
-              ? formData.secondaryMuscles
-              : [],
+        formData.append(
+          "muscleGroup",
+          payload.muscleGroup,
+        )
 
-          targetGender:
-            Array.isArray(
-              formData.targetGender,
-            )
-              ? formData.targetGender
-              : [
-                  "Male",
-                  "Female",
-                ],
+        formData.append(
+          "secondaryMuscles",
+          JSON.stringify(
+            payload.secondaryMuscles,
+          ),
+        )
 
-          fitnessGoals:
-            Array.isArray(
-              formData.fitnessGoals,
-            )
-              ? formData.fitnessGoals
-              : [],
+        formData.append(
+          "targetGender",
+          JSON.stringify(
+            payload.targetGender,
+          ),
+        )
 
-          difficulty:
-            formData.difficulty ||
-            "Beginner",
+        formData.append(
+          "fitnessGoals",
+          JSON.stringify(
+            payload.fitnessGoals,
+          ),
+        )
 
-          equipment:
-            Array.isArray(
-              formData.equipment,
-            )
-              ? formData.equipment
-              : [],
+        formData.append(
+          "description",
+          payload.description,
+        )
 
-          description:
-            formData.description?.trim() ||
-            "",
+        formData.append(
+          "difficulty",
+          payload.difficulty,
+        )
 
-          instructions:
-            formData.instructions
-              ? formData.instructions
-                  .split("\n")
-                  .map(
-                    (item) =>
-                      item.trim(),
-                  )
-                  .filter(Boolean)
-              : [],
+        formData.append(
+          "defaultSets",
+          String(
+            payload.defaultSets,
+          ),
+        )
 
-          safetyTips:
-            formData.safetyTips
-              ? formData.safetyTips
-                  .split("\n")
-                  .map(
-                    (item) =>
-                      item.trim(),
-                  )
-                  .filter(Boolean)
-              : [],
-
-          defaultSets:
-            Number(
-              formData.sets || 3,
+        if (
+          payload.defaultReps !==
+          null
+        ) {
+          formData.append(
+            "defaultReps",
+            String(
+              payload.defaultReps,
             ),
+          )
+        }
 
-          defaultReps:
-            formData.reps !== "" &&
-            formData.reps !== null &&
-            formData.reps !==
-              undefined
-              ? Number(
-                  formData.reps,
-                )
-              : null,
-
-          defaultDuration:
-            formData.duration !==
-              "" &&
-            formData.duration !==
-              null &&
-            formData.duration !==
-              undefined
-              ? Number(
-                  formData.duration,
-                )
-              : null,
-
-          defaultRest:
-            parseRest(
-              formData.rest,
+        if (
+          payload.defaultDuration !==
+          null
+        ) {
+          formData.append(
+            "defaultDuration",
+            String(
+              payload.defaultDuration,
             ),
-
-          caloriesEstimate:
-            formData.caloriesEstimate !==
-              "" &&
-            formData.caloriesEstimate !==
-              null &&
-            formData.caloriesEstimate !==
-              undefined
-              ? Number(
-                  formData.caloriesEstimate,
-                )
-              : null,
-
-          isActive:
-            formData.status !==
-            "Inactive",
+          )
         }
+
+        formData.append(
+          "defaultRest",
+          String(
+            payload.defaultRest,
+          ),
+        )
+
+        if (
+          payload.caloriesEstimate !==
+          null
+        ) {
+          formData.append(
+            "caloriesEstimate",
+            String(
+              payload.caloriesEstimate,
+            ),
+          )
+        }
+
+        formData.append(
+          "isActive",
+          String(payload.isActive),
+        )
 
         /*
         |--------------------------------------------------------------------------
-        | Media
+        | Instructions
+        |--------------------------------------------------------------------------
+        |
+        | Backend accepts newline-separated instructions.
+        |
+        */
+
+        formData.append(
+          "instructions",
+          payload.instructions.join(
+            "\n",
+          ),
+        )
+
+        formData.append(
+          "safetyTips",
+          payload.safetyTips.join(
+            "\n",
+          ),
+        )
+
+        /*
+        |--------------------------------------------------------------------------
+        | Equipment
+        |--------------------------------------------------------------------------
+        */
+
+        formData.append(
+          "equipment",
+          payload.equipment.join(
+            ", ",
+          ),
+        )
+
+        /*
+        |--------------------------------------------------------------------------
+        | Image file
         |--------------------------------------------------------------------------
         */
 
         if (
-          selectedFile
+          imageFile
         ) {
-          if (
-            formData.mediaType ===
-            "video"
-          ) {
-            payload.video =
-              selectedFile
-          } else {
-            payload.image =
-              selectedFile
-          }
-        } else if (
-          editingExercise
-        ) {
-          if (
-            formData.mediaType ===
-            "video"
-          ) {
-            payload.videoUrl =
-              editingExercise.videoUrl ||
-              ""
-          } else {
-            payload.imageUrl =
-              editingExercise.imageUrl ||
-              ""
-          }
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | API request
-        |--------------------------------------------------------------------------
-        */
-
-        let response
-
-        if (
-          !editingExercise
-        ) {
-          response =
-            await createExercise(
-              payload,
-            )
-        } else {
-          response =
-            await updateExercise(
-              editingExercise.id,
-              payload,
-            )
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Response
-        |--------------------------------------------------------------------------
-        */
-
-        const data =
-          response?.data ||
-          response
-
-        if (
-          !data?.success
-        ) {
-          throw new Error(
-            data?.message ||
-              "Unable to save exercise.",
+          formData.append(
+            "image",
+            imageFile,
           )
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Reload database data
+        | Video file
         |--------------------------------------------------------------------------
         */
 
-        await loadExercises()
+        if (
+          videoFile
+        ) {
+          formData.append(
+            "video",
+            videoFile,
+          )
+        }
 
-        closeForm()
+        /*
+        |--------------------------------------------------------------------------
+        | Save
+        |--------------------------------------------------------------------------
+        */
 
-        window.alert(
+        if (
           editingExercise
-            ? "Exercise updated successfully."
-            : "Exercise created successfully.",
-        )
-      } catch (error) {
-        console.error(
-          "Save exercise error:",
-          error,
+        ) {
+          const response =
+            await updateExercise(
+              editingExercise._id,
+              formData,
+            )
+
+          const updatedExercise =
+            response?.exercise
+
+          if (
+            updatedExercise
+          ) {
+            setExercises(
+              (current) =>
+                current.map(
+                  (exercise) =>
+                    exercise._id ===
+                    updatedExercise._id
+                      ? updatedExercise
+                      : exercise,
+                ),
+            )
+          }
+
+          setSuccess(
+            "Exercise updated successfully.",
+          )
+        } else {
+          const response =
+            await createExercise(
+              formData,
+            )
+
+          const createdExercise =
+            response?.exercise
+
+          if (
+            createdExercise
+          ) {
+            setExercises(
+              (current) => [
+                createdExercise,
+                ...current,
+              ],
+            )
+          }
+
+          setSuccess(
+            "Exercise created successfully.",
+          )
+        }
+
+        setShowForm(false)
+
+        setEditingExercise(
+          null,
         )
 
-        window.alert(
-          error.response?.data
-            ?.message ||
-            error.message ||
+        setForm({
+          ...EMPTY_FORM,
+        })
+
+        setImageFile(null)
+        setVideoFile(null)
+
+        setImagePreview("")
+        setVideoPreview("")
+      } catch (
+        saveError
+      ) {
+        console.error(
+          "Unable to save exercise:",
+          saveError,
+        )
+
+        setError(
+          saveError.response
+            ?.data?.message ||
+            saveError.message ||
             "Unable to save exercise.",
         )
       } finally {
@@ -1233,54 +1224,253 @@ function Workouts() {
 
   /*
   |--------------------------------------------------------------------------
-  | Delete / deactivate exercise
+  | Program creation workflow
   |--------------------------------------------------------------------------
   */
 
-  const handleDeleteExercise =
-    async (
-      id,
-    ) => {
-      const confirmed =
-        window.confirm(
-          "Are you sure you want to deactivate this exercise?",
-        )
+  const toggleProgramExercise =
+    (exercise) => {
+      const exerciseId =
+        String(exercise?._id || "")
 
-      if (!confirmed) {
+      if (!exerciseId) {
+        return
+      }
+
+      setProgramError("")
+
+      setSelectedProgramExercises(
+        (current) => {
+          const exists = current.some(
+            (id) => String(id) === exerciseId,
+          )
+
+          if (exists) {
+            return current.filter(
+              (id) =>
+                String(id) !== exerciseId,
+            )
+          }
+
+          return [
+            ...current,
+            exerciseId,
+          ]
+        },
+      )
+    }
+
+  const openProgramForm =
+    () => {
+      if (
+        selectedProgramExercises.length ===
+        0
+      ) {
+        setProgramError(
+          "Select at least one exercise to create the program.",
+        )
+        return
+      }
+
+      setProgramError("")
+      setShowProgramForm(true)
+    }
+
+  const closeProgramForm =
+    () => {
+      if (creatingProgram) {
+        return
+      }
+
+      setShowProgramForm(false)
+    }
+
+  const handleCreateProgram =
+    async () => {
+      if (!programName.trim()) {
+        setProgramError(
+          "Program name is required.",
+        )
+        return
+      }
+
+      if (
+        selectedProgramExercises.length ===
+        0
+      ) {
+        setProgramError(
+          "Select at least one exercise to create the program.",
+        )
         return
       }
 
       try {
-        const response =
-          await deleteExerciseApi(
-            id,
-          )
+        setCreatingProgram(true)
+        setProgramError("")
 
-        const data =
-          response?.data ||
-          response
+        const selectedExercises =
+          selectedProgramExercises
+            .map((id) =>
+              exercises.find(
+                (exercise) =>
+                  String(exercise._id) ===
+                  String(id),
+              ),
+            )
+            .filter(Boolean)
 
         if (
-          !data?.success
+          selectedExercises.length === 0
         ) {
           throw new Error(
-            data?.message ||
-              "Unable to deactivate exercise.",
+            "The selected exercises could not be found.",
           )
         }
 
-        await loadExercises()
+        const response =
+          await createProgram({
+            name: programName.trim(),
+            description: `${programWorkoutType} training program.`,
+            workoutType: programWorkoutType,
+            exercises: selectedExercises.map(
+              (exercise, index) => ({
+                exercise: exercise._id,
+                order: index + 1,
+                sets: Number(
+                  exercise.defaultSets,
+                ) || 3,
+                reps:
+                  exercise.defaultReps ===
+                    null ||
+                  exercise.defaultReps ===
+                    undefined ||
+                  exercise.defaultReps ===
+                    ""
+                    ? null
+                    : Number(
+                        exercise.defaultReps,
+                      ),
+                duration:
+                  exercise.defaultDuration ===
+                    null ||
+                  exercise.defaultDuration ===
+                    undefined ||
+                  exercise.defaultDuration ===
+                    ""
+                    ? null
+                    : Number(
+                        exercise.defaultDuration,
+                      ),
+                rest:
+                  Number(
+                    exercise.defaultRest,
+                  ) || 0,
+                notes: "",
+              }),
+            ),
+            isActive: true,
+          })
+
+        const createdProgram =
+          response?.program
+
+        if (!createdProgram?._id) {
+          throw new Error(
+            response?.message ||
+              "The program could not be created.",
+          )
+        }
+
+        setShowProgramForm(false)
+        setSelectedProgramExercises([])
+        setProgramName("")
+        setProgramWorkoutType(
+          "Lower Body",
+        )
+
+        navigate(
+          "/admin/programs",
+          {
+            replace: true,
+            state: {
+              createdProgramId:
+                createdProgram._id,
+            },
+          },
+        )
       } catch (error) {
         console.error(
-          "Delete exercise error:",
+          "Create program error:",
           error,
         )
 
-        window.alert(
+        setProgramError(
           error.response?.data
             ?.message ||
             error.message ||
-            "Unable to deactivate exercise.",
+            "Unable to create workout program.",
+        )
+      } finally {
+        setCreatingProgram(false)
+      }
+    }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Delete exercise
+  |--------------------------------------------------------------------------
+  */
+
+  const handleDeleteExercise =
+    (exercise) => {
+      setError("")
+      setSuccess("")
+      setDeleteConfirmExercise(exercise)
+    }
+
+  const confirmDeleteExercise =
+    async () => {
+      if (!deleteConfirmExercise?._id) {
+        return
+      }
+
+      const exercise =
+        deleteConfirmExercise
+
+      try {
+        setDeleteConfirmExercise(null)
+        setError("")
+        setSuccess("")
+
+        await deleteExercise(
+          exercise._id,
+        )
+
+        setExercises(
+          (current) =>
+            current.filter(
+              (item) =>
+                item._id !==
+                exercise._id,
+            ),
+        )
+
+        setSuccess(
+          "Exercise deleted successfully.",
+        )
+      } catch (
+        deleteError
+      ) {
+        console.error(
+          "Unable to delete exercise:",
+          deleteError,
+        )
+
+        setError(
+          deleteError.response
+            ?.data?.message ||
+            deleteError.message ||
+            "Unable to delete exercise.",
         )
       }
     }
@@ -1292,24 +1482,31 @@ function Workouts() {
   */
 
   return (
-    <div className="min-h-screen bg-black px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-black px-4 py-6 text-white sm:px-6 lg:px-8">
+
       <div className="mx-auto max-w-7xl">
 
-        {/* HEADER */}
+        {/* ================================================================ */}
+        {/* HEADER                                                           */}
+        {/* ================================================================ */}
 
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-lime-400">
+
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-lime-400">
               CGF Admin
             </p>
 
-            <h1 className="mt-1 text-3xl font-black text-white">
-              Workouts
+            <h1 className="mt-1 text-3xl font-black tracking-tight">
+              Exercise Library
             </h1>
 
-            <p className="mt-2 text-sm text-gray-500">
-              Create and manage exercises used in CGF training programs.
+            <p className="mt-1 text-sm text-slate-400">
+              Manage exercises available
+              for workout programs.
             </p>
+
           </div>
 
           <button
@@ -1317,427 +1514,609 @@ function Workouts() {
             onClick={
               openCreateForm
             }
-            className="flex items-center justify-center gap-2 rounded-2xl bg-yellow-400 px-5 py-3 text-sm font-black text-black transition hover:bg-yellow-300"
+            className="rounded-xl bg-yellow-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-yellow-300"
           >
-            <Plus
-              size={18}
-            />
-
-            ADD EXERCISE
+            + Add Exercise
           </button>
+
         </div>
 
-        {/* SEARCH */}
+        {createProgramMode && (
+          <div className="mt-6 rounded-2xl border border-lime-400/20 bg-lime-400/10 p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-lime-400">
+                  Create Workout Program
+                </p>
+                <p className="mt-1 text-sm text-gray-300">
+                  Select the exercises you want to include, then continue to create the program.
+                </p>
+                <p className="mt-2 text-xs font-bold text-lime-300">
+                  {selectedProgramExercises.length} exercise{selectedProgramExercises.length === 1 ? "" : "s"} selected
+                </p>
+              </div>
 
-        <section className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4">
-          <div className="flex flex-col gap-3 md:flex-row">
-
-            <div className="relative flex-1">
-              <Search
-                size={18}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600"
-              />
-
-              <input
-                type="search"
-                value={
-                  searchTerm
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setSearchTerm(
-                    event.target
-                      .value,
-                  )
-                }
-                placeholder="Search exercises..."
-                className="w-full rounded-2xl border border-white/10 bg-black py-3 pl-11 pr-4 text-sm text-white outline-none placeholder:text-gray-700 focus:border-yellow-400"
-              />
+              <button
+                type="button"
+                onClick={openProgramForm}
+                disabled={selectedProgramExercises.length === 0}
+                className="rounded-xl bg-lime-400 px-5 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                CONTINUE TO PROGRAM
+              </button>
             </div>
 
-            <select
-              value={
-                categoryFilter
-              }
-              onChange={(
-                event,
-              ) =>
-                setCategoryFilter(
-                  event.target
-                    .value,
-                )
-              }
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none focus:border-yellow-400"
-            >
-              <option value="all">
-                All categories
-              </option>
-
-              {categories.map(
-                (
-                  category,
-                ) => (
-                  <option
-                    key={
-                      category
-                    }
-                    value={
-                      category
-                    }
-                  >
-                    {
-                      category
-                    }
-                  </option>
-                ),
-              )}
-            </select>
-
+            {programError && (
+              <p className="mt-3 text-sm font-bold text-red-300">
+                {programError}
+              </p>
+            )}
           </div>
-        </section>
+        )}
 
-        {/* EXERCISES */}
+        {/* ================================================================ */}
+        {/* MESSAGES                                                         */}
+        {/* ================================================================ */}
 
-        {loading ? (
-          <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-12 text-center">
-            <p className="text-sm font-bold text-gray-500">
-              Loading exercises...
-            </p>
+        {error && (
+          <div className="mt-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
-        ) : (
-          <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        )}
 
-            {filteredExercises.map(
+        {success && (
+          <div className="mt-5 rounded-xl border border-lime-400/20 bg-lime-400/10 px-4 py-3 text-sm text-lime-300">
+            {success}
+          </div>
+        )}
+
+        {/* ================================================================ */}
+        {/* FILTERS                                                          */}
+        {/* ================================================================ */}
+
+        <div className="mt-6 grid gap-3 rounded-2xl border border-white/10 bg white/[0.03] p-4 md:grid-cols-4">
+
+          <input
+            type="text"
+            value={search}
+            onChange={(
+              event,
+            ) =>
+              setSearch(
+                event.target.value,
+              )
+            }
+            placeholder="Search exercises..."
+            className="rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-lime-400/50"
+          />
+
+          <select
+            value={
+              categoryFilter
+            }
+            onChange={(
+              event,
+            ) =>
+              setCategoryFilter(
+                event.target.value,
+              )
+            }
+            className="rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-lime-400/50"
+          >
+            <option value="All">
+              All Categories
+            </option>
+
+            {CATEGORY_OPTIONS.map(
               (
-                exercise,
+                category,
               ) => (
-                <article
+                <option
                   key={
-                    exercise.id
+                    category
                   }
-                  className="overflow-hidden rounded-3xl border border-white/10 bg-white/5"
+                  value={
+                    category
+                  }
                 >
-
-                  {/* MEDIA */}
-
-                  <div className="aspect-[9/16] w-full bg-black">
-
-                    {exercise.mediaUrl ? (
-                      exercise.mediaType ===
-                      "video" ? (
-                        <video
-                          src={
-                            exercise.mediaUrl
-                          }
-                          controls
-                          playsInline
-                          preload="metadata"
-                          className="h-full w-full object-contain"
-                        />
-                      ) : (
-                        <img
-                          src={
-                            exercise.mediaUrl
-                          }
-                          alt={
-                            exercise.name
-                          }
-                          className="h-full w-full object-contain"
-                        />
-                      )
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-yellow-400 text-black">
-
-                          {exercise.mediaType ===
-                          "video" ? (
-                            <Video
-                              size={21}
-                            />
-                          ) : (
-                            <Image
-                              size={21}
-                            />
-                          )}
-
-                        </div>
-
-                        <p className="mt-3 text-xs font-semibold text-gray-600">
-                          No demonstration uploaded
-                        </p>
-                      </div>
-                    )}
-
-                  </div>
-
-                  {/* DETAILS */}
-
-                  <div className="p-5">
-
-                    <div className="flex items-start justify-between gap-3">
-
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-yellow-400">
-                          {
-                            exercise.category
-                          }
-                        </p>
-
-                        <h2 className="mt-1 text-lg font-black text-white">
-                          {
-                            exercise.name
-                          }
-                        </h2>
-
-                        <p className="mt-1 text-xs text-gray-500">
-                          {
-                            exercise.muscleGroup
-                          }
-                        </p>
-                      </div>
-
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                          exercise.status ===
-                          "Active"
-                            ? "bg-lime-400/10 text-lime-400"
-                            : "bg-red-400/10 text-red-400"
-                        }`}
-                      >
-                        {
-                          exercise.status
-                        }
-                      </span>
-
-                    </div>
-
-                    {/* STATS */}
-
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-
-                      <div className="rounded-2xl bg-black p-3">
-                        <p className="text-[10px] text-gray-600">
-                          Sets
-                        </p>
-
-                        <p className="mt-1 text-sm font-black text-white">
-                          {
-                            exercise.sets
-                          }
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl bg-black p-3">
-                        <p className="text-[10px] text-gray-600">
-                          Reps
-                        </p>
-
-                        <p className="mt-1 text-sm font-black text-white">
-                          {
-                            exercise.reps
-                          }
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl bg-black p-3">
-                        <p className="text-[10px] text-gray-600">
-                          Difficulty
-                        </p>
-
-                        <p className="mt-1 text-sm font-black text-yellow-400">
-                          {
-                            exercise.difficulty ||
-                            "Beginner"
-                          }
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl bg-black p-3">
-                        <p className="text-[10px] text-gray-600">
-                          Rest
-                        </p>
-
-                        <p className="mt-1 text-sm font-black text-white">
-                          {
-                            exercise.rest
-                          }
-                        </p>
-                      </div>
-
-                    </div>
-
-                    {/* TARGET */}
-
-                    <div className="mt-4 rounded-2xl bg-black p-3">
-
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-600">
-                        Recommended For
-                      </p>
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-
-                        {exercise.targetGender?.length ? (
-                          exercise.targetGender.map(
-                            (
-                              gender,
-                            ) => (
-                              <span
-                                key={
-                                  gender
-                                }
-                                className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-white"
-                              >
-                                {gender}
-                              </span>
-                            ),
-                          )
-                        ) : (
-                          <span className="text-xs font-bold text-white">
-                            All members
-                          </span>
-                        )}
-
-                      </div>
-
-                      <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-gray-600">
-                        Fitness Goals
-                      </p>
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-
-                        {exercise.fitnessGoals?.length ? (
-                          exercise.fitnessGoals.map(
-                            (
-                              goal,
-                            ) => (
-                              <span
-                                key={
-                                  goal
-                                }
-                                className="rounded-full bg-lime-400 px-2.5 py-1 text-[10px] font-black text-black"
-                              >
-                                {goal}
-                              </span>
-                            ),
-                          )
-                        ) : (
-                          <span className="text-xs text-gray-400">
-                            No goals assigned
-                          </span>
-                        )}
-
-                      </div>
-
-                    </div>
-
-                    {/* MEDIA LABEL */}
-
-                    <div className="mt-4 flex items-center gap-2 text-xs text-gray-500">
-
-                      {exercise.mediaType ===
-                      "video" ? (
-                        <Video
-                          size={14}
-                        />
-                      ) : (
-                        <Image
-                          size={14}
-                        />
-                      )}
-
-                      {exercise.mediaType ===
-                      "video"
-                        ? "Video demonstration"
-                        : "Image demonstration"}
-
-                    </div>
-
-                    {/* ACTIONS */}
-
-                    <div className="mt-4 flex gap-2">
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openEditForm(
-                            exercise,
-                          )
-                        }
-                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/5 px-3 py-3 text-xs font-bold text-white transition hover:bg-yellow-400 hover:text-black"
-                      >
-                        <Edit3
-                          size={15}
-                        />
-
-                        EDIT
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDeleteExercise(
-                            exercise.id,
-                          )
-                        }
-                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-400/10 text-red-400 transition hover:bg-red-400 hover:text-white"
-                        aria-label={`Delete ${exercise.name}`}
-                      >
-                        <Trash2
-                          size={16}
-                        />
-                      </button>
-
-                    </div>
-
-                  </div>
-                </article>
+                  {category}
+                </option>
               ),
             )}
 
-          </section>
-        )}
+          </select>
 
-        {/* EMPTY */}
+          <select
+            value={
+              difficultyFilter
+            }
+            onChange={(
+              event,
+            ) =>
+              setDifficultyFilter(
+                event.target.value,
+              )
+            }
+            className="rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-lime-400/50"
+          >
+            <option value="All">
+              All Difficulties
+            </option>
 
-        {!loading &&
-          filteredExercises.length ===
-            0 && (
-            <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-12 text-center">
+            {DIFFICULTY_OPTIONS.map(
+              (
+                difficulty,
+              ) => (
+                <option
+                  key={
+                    difficulty
+                  }
+                  value={
+                    difficulty
+                  }
+                >
+                  {difficulty}
+                </option>
+              ),
+            )}
 
-              <Dumbbell
-                size={30}
-                className="mx-auto text-gray-700"
-              />
+          </select>
 
-              <p className="mt-4 text-sm font-bold text-white">
+          <div className="flex items-center rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-slate-400">
+            {filteredExercises.length}{" "}
+            exercise
+            {filteredExercises.length ===
+            1
+              ? ""
+              : "s"}
+          </div>
+
+        </div>
+
+        {/* ================================================================ */}
+        {/* EXERCISE LIST                                                    */}
+        {/* ================================================================ */}
+
+        <div className="mt-6">
+
+          {loading ? (
+            <div className="rounded-2xl border border-white/10 bg- white/[0.03] p-10 text-center text-sm text-slate-400">
+              Loading exercises...
+            </div>
+          ) : filteredExercises.length ===
+            0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 bg- white/[0.03] p-10 text-center">
+
+              <h2 className="text-lg font-bold text-white">
                 No exercises found
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-500">
+                Add an exercise to
+                start building your
+                workout programs.
               </p>
 
-              <p className="mt-1 text-xs text-gray-600">
-                Try a different search or category.
-              </p>
+              <button
+                type="button"
+                onClick={
+                  openCreateForm
+                }
+                className="mt-5 rounded-xl bg-yellow-400 px-5 py-3 text-sm font-bold text-black"
+              >
+                Add Exercise
+              </button>
+
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+
+              {filteredExercises.map(
+                (
+                  exercise,
+                ) => (
+                  <div
+                    key={
+                      exercise._id
+                    }
+                    className="overflow-hidden rounded-2xl border border-white/10 bg -white/[0.03]"
+                  >
+
+                    {/* ---------------------------------------------------- */}
+                    {/* Exercise image                                       */}
+                    {/* ---------------------------------------------------- */}
+
+                    {exercise.imageUrl ? (
+                      <img
+                        src={
+                          exercise.imageUrl
+                        }
+                        alt={
+                          exercise.name
+                        }
+                        className="h-56 w-full bg-black object-contain"
+                      />
+                    ) : (
+                      <div className="flex h-56 items-center justify-center bg-slate-900 text-4xl font-black text-slate-700">
+                        {exercise.name
+                          ?.charAt(
+                            0,
+                          )
+                          ?.toUpperCase() ||
+                          "E"}
+                      </div>
+                    )}
+
+                    <div className="p-5">
+
+                      <div className="flex items-start justify-between gap-3">
+
+                        <div>
+
+                          <h2 className="font-bold text-white">
+                            {
+                              exercise.name
+                            }
+                          </h2>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            {
+                              exercise.muscleGroup
+                            }
+                          </p>
+
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="rounded-full bg-lime-400/10 px-2.5 py-1 text-[10px] font-bold uppercase text-lime-300">
+                            {exercise.difficulty}
+                          </span>
+
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
+                              exercise.isActive === false
+                                ? "bg-red-500/10 text-red-300"
+                                : "bg-lime-400/10 text-lime-300"
+                            }`}
+                          >
+                            {exercise.isActive === false
+                              ? "Inactive"
+                              : "Active"}
+                          </span>
+                        </div>
+
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Sets</p>
+                          <p className="mt-1 text-sm font-bold text-white">{exercise.defaultSets ?? 3}</p>
+                        </div>
+
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Reps</p>
+                          <p className="mt-1 text-sm font-bold text-white">{exercise.defaultReps || "—"}</p>
+                        </div>
+
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Duration</p>
+                          <p className="mt-1 text-sm font-bold text-white">
+                            {exercise.defaultDuration ? `${exercise.defaultDuration} sec` : "—"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white/5 p-3">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Rest</p>
+                          <p className="mt-1 text-sm font-bold text-white">
+                            {exercise.defaultRest != null ? `${exercise.defaultRest} sec` : "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-3 text-sm">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Secondary Muscles</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.secondaryMuscles) && exercise.secondaryMuscles.length
+                              ? exercise.secondaryMuscles.join(", ")
+                              : "None specified"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Equipment</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.equipment)
+                              ? exercise.equipment.join(", ")
+                              : exercise.equipment || "No equipment"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Recommended For</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.targetGender) && exercise.targetGender.length
+                              ? exercise.targetGender.join(", ")
+                              : "Male, Female"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fitness Goals</p>
+                          <p className="mt-1 text-slate-300">
+                            {Array.isArray(exercise.fitnessGoals) && exercise.fitnessGoals.length
+                              ? exercise.fitnessGoals.join(", ")
+                              : "Not specified"}
+                          </p>
+                        </div>
+
+                        {exercise.caloriesEstimate != null && exercise.caloriesEstimate !== "" && (
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Calories Estimate</p>
+                            <p className="mt-1 text-slate-300">{exercise.caloriesEstimate} kcal</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {exercise.description && (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Description</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-300">
+                            {exercise.description}
+                          </p>
+                        </div>
+                      )}
+
+                      {Array.isArray(exercise.instructions) && exercise.instructions.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Instructions</p>
+                          <ol className="mt-2 space-y-2 text-sm leading-6 text-slate-300">
+                            {exercise.instructions.map((instruction, index) => (
+                              <li key={`${exercise._id}-instruction-${index}`}>
+                                <span className="font-bold text-lime-400">{index + 1}.</span>{" "}
+                                {instruction}
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+
+                      {Array.isArray(exercise.safetyTips) && exercise.safetyTips.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-yellow-400/10 bg-yellow-400/[0.03] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-yellow-400">Safety Tips</p>
+                          <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-300">
+                            {exercise.safetyTips.map((tip, index) => (
+                              <li key={`${exercise._id}-safety-${index}`}>
+                                • {tip}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {exercise.videoUrl && (
+                        <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-black">
+                          <video
+                            src={exercise.videoUrl}
+                            controls
+                            preload="metadata"
+                            className="max-h-52 w-full"
+                          />
+                        </div>
+                      )}
+
+                      <div className="mt-5 flex gap-2">
+
+                        {createProgramMode && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleProgramExercise(
+                                exercise,
+                              )
+                            }
+                            disabled={exercise.isActive === false}
+                            className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                              exercise.isActive === false
+                                ? "cursor-not-allowed border border-white/10 bg-slate-900 text-slate-600"
+                                : selectedProgramExercises.some(
+                                    (id) =>
+                                      String(id) ===
+                                      String(exercise._id),
+                                  )
+                                    ? "bg-lime-400 text-black"
+                                    : "border border-lime-400/30 text-lime-300 hover:bg-lime-400/10"
+                            }`}
+                          >
+                            {exercise.isActive === false
+                              ? "INACTIVE"
+                              : selectedProgramExercises.some(
+                                  (id) =>
+                                    String(id) ===
+                                    String(exercise._id),
+                                )
+                                ? "SELECTED"
+                                : "SELECT"}
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openEditForm(
+                              exercise,
+                            )
+                          }
+                          className="flex-1 rounded-xl border border-white/10 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-white/5"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteExercise(
+                              exercise,
+                            )
+                          }
+                          className="flex-1 rounded-xl border border-red-500/20 px-3 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/10"
+                        >
+                          Delete
+                        </button>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+                ),
+              )}
 
             </div>
           )}
 
+        </div>
+
       </div>
 
+      {showProgramForm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-400">
+                  New Workout Program
+                </p>
+                <h2 className="mt-1 text-2xl font-black text-white">
+                  Program Details
+                </h2>
+                <p className="mt-2 text-sm text-slate-500">
+                  {selectedProgramExercises.length} exercise{selectedProgramExercises.length === 1 ? "" : "s"} selected from the library.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeProgramForm}
+                disabled={creatingProgram}
+                className="rounded-xl border border-white/10 px-3 py-2 text-slate-400 hover:bg-white/5 disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
+                  Program Name
+                </label>
+                <input
+                  value={programName}
+                  onChange={(event) =>
+                    setProgramName(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="e.g. Upper Body Beginner"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
+                  Workout Type
+                </label>
+                <select
+                  value={programWorkoutType}
+                  onChange={(event) =>
+                    setProgramWorkoutType(
+                      event.target.value,
+                    )
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-lime-400/50"
+                >
+                  <option value="Lower Body">Lower Body</option>
+                  <option value="Upper Body">Upper Body</option>
+                  <option value="CrossFit">CrossFit</option>
+                  <option value="Tabata">Tabata</option>
+                </select>
+              </div>
+
+              {programError && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm font-bold text-red-300">
+                  {programError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCreateProgram}
+                disabled={creatingProgram}
+                className="w-full rounded-xl bg-yellow-400 px-5 py-3.5 text-sm font-black text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {creatingProgram
+                  ? "CREATING PROGRAM..."
+                  : "CREATE PROGRAM"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmExercise && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <h2 className="text-xl font-black text-white">
+              Delete Exercise
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              Are you sure you want to remove{" "}
+              <span className="font-bold text-white">
+                {deleteConfirmExercise.name}
+              </span>
+              ?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setDeleteConfirmExercise(null)
+                }
+                className="flex-1 rounded-xl border border-white/10 px-4 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/5"
+              >
+                CANCEL
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteExercise}
+                className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-black text-white transition hover:bg-red-400"
+              >
+                DELETE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ================================================================== */}
-      {/* ADD / EDIT MODAL */}
+      {/* CREATE / EDIT MODAL                                                */}
       {/* ================================================================== */}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
 
-          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-6 text-black sm:rounded-3xl">
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
 
-            {/* MODAL HEADER */}
+            {/* ============================================================ */}
+            {/* MODAL HEADER                                                  */}
+            {/* ============================================================ */}
 
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-4">
 
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-lime-400">
                   Exercise Library
                 </p>
 
@@ -1746,6 +2125,14 @@ function Workouts() {
                     ? "Edit Exercise"
                     : "Add Exercise"}
                 </h2>
+
+                <p className="mt-2 text-sm text-slate-500">
+                  Add the exercise information
+                  and upload demonstration
+                  media directly from your
+                  device.
+                </p>
+
               </div>
 
               <button
@@ -1753,547 +2140,444 @@ function Workouts() {
                 onClick={
                   closeForm
                 }
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+                disabled={saving}
+                className="rounded-xl border border-white/10 px-3 py-2 text-slate-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
               >
-                <X
-                  size={18}
-                />
+                ✕
               </button>
 
             </div>
+
+            {/* ============================================================ */}
+            {/* FORM                                                          */}
+            {/* ============================================================ */}
 
             <form
               onSubmit={
                 handleSubmit
               }
-              className="mt-6 space-y-5"
+              className="mt-6 space-y-6"
             >
 
-              {/* BASIC INFORMATION */}
+              {/* ========================================================== */}
+              {/* BASIC INFORMATION                                           */}
+              {/* ========================================================== */}
 
-              <div>
+              <div className="rounded-2xl border border-white/10 bg- white/[0.02] p-5">
 
-                <label
-                  htmlFor="name"
-                  className="mb-2 block text-xs font-bold text-gray-600"
-                >
-                  Exercise name
-                </label>
+                <div className="mb-5">
 
-                <input
-                  id="name"
-                  name="name"
-                  value={
-                    formData.name
-                  }
-                  onChange={
-                    handleChange
-                  }
-                  placeholder="e.g. Barbell Bench Press"
-                  required
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                />
+                  <h3 className="text-base font-black">
+                    Exercise Information
+                  </h3>
 
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-
-                {/* CATEGORY */}
-
-                <div>
-
-                  <label
-                    htmlFor="category"
-                    className="mb-2 block text-xs font-bold text-gray-600"
-                  >
-                    Category
-                  </label>
-
-                  <select
-                    id="category"
-                    name="category"
-                    value={
-                      formData.category
-                    }
-                    onChange={
-                      handleChange
-                    }
-                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                  >
-                    {categories.map(
-                      (
-                        category,
-                      ) => (
-                        <option
-                          key={
-                            category
-                          }
-                          value={
-                            category
-                          }
-                        >
-                          {
-                            category
-                          }
-                        </option>
-                      ),
-                    )}
-                  </select>
-
-                </div>
-
-                {/* PRIMARY MUSCLE */}
-
-                <div>
-
-                  <label
-                    htmlFor="muscleGroup"
-                    className="mb-2 block text-xs font-bold text-gray-600"
-                  >
-                    Primary muscle group
-                  </label>
-
-                  <input
-                    id="muscleGroup"
-                    name="muscleGroup"
-                    value={
-                      formData.muscleGroup
-                    }
-                    onChange={
-                      handleChange
-                    }
-                    placeholder="e.g. Chest"
-                    required
-                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                  />
-
-                </div>
-
-              </div>
-
-              {/* SECONDARY MUSCLES */}
-
-              <div>
-
-                <label
-                  htmlFor="secondaryMuscles"
-                  className="mb-2 block text-xs font-bold text-gray-600"
-                >
-                  Secondary muscles
-                </label>
-
-                <input
-                  id="secondaryMuscles"
-                  value={(
-                    formData.secondaryMuscles ||
-                    []
-                  ).join(
-                    ", ",
-                  )}
-                  onChange={
-                    handleSecondaryMusclesChange
-                  }
-                  placeholder="e.g. Triceps, Shoulders, Core"
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                />
-
-                <p className="mt-1 text-xs text-gray-400">
-                  Separate muscle groups with commas.
-                </p>
-
-              </div>
-
-              {/* RECOMMENDATION TARGET */}
-
-              <div className="rounded-3xl border border-gray-200 bg-gray-50 p-5">
-
-                <div>
-                  <p className="text-xs font-black uppercase tracking-wider text-gray-500">
-                    Recommendation Target
+                  <p className="mt-1 text-xs text-slate-500">
+                    Enter the basic details
+                    for this exercise.
                   </p>
 
-                  <p className="mt-1 text-xs leading-5 text-gray-500">
-                    Choose which CGF members should receive this exercise when the Admin creates a workout recommendation.
-                  </p>
                 </div>
 
-                {/* GENDER */}
+                <div className="grid gap-4 md:grid-cols-2">
 
-                <div className="mt-5">
+                  {/* Exercise name */}
 
-                  <label className="mb-2 block text-xs font-bold text-gray-600">
-                    Target gender
-                  </label>
+                  <div className="md:col-span-2">
 
-                  <div className="grid grid-cols-2 gap-2">
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Exercise Name
+                    </label>
 
-                    {genderOptions.map(
-                      (
-                        gender,
-                      ) => {
-                        const selected =
-                          formData.targetGender?.includes(
-                            gender,
-                          )
+                    <input
+                      name="name"
+                      value={
+                        form.name
+                      }
+                      onChange={
+                        handleChange
+                      }
+                      required
+                      placeholder="e.g. Barbell Squat"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                    />
+
+                  </div>
+
+                  {/* Category */}
+
+                  <div>
+
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Category
+                    </label>
+
+                    <select
+                      name="category"
+                      value={
+                        form.category
+                      }
+                      onChange={
+                        handleChange
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-lime-400/50"
+                    >
+                      {CATEGORY_OPTIONS.map(
+                        (
+                          category,
+                        ) => (
+                          <option
+                            key={
+                              category
+                            }
+                            value={
+                              category
+                            }
+                          >
+                            {
+                              category
+                            }
+                          </option>
+                        ),
+                      )}
+                    </select>
+
+                  </div>
+
+                  {/* Muscle group */}
+
+                  <div>
+
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Muscle Group
+                    </label>
+
+                    <input
+                      name="muscleGroup"
+                      value={
+                        form.muscleGroup
+                      }
+                      onChange={
+                        handleChange
+                      }
+                      placeholder="e.g. Quadriceps"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                    />
+
+                  </div>
+
+                  {/* Secondary muscles */}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Secondary Muscles
+                    </label>
+
+                    <input
+                      name="secondaryMuscles"
+                      value={form.secondaryMuscles}
+                      onChange={handleChange}
+                      placeholder="e.g. Triceps, Shoulders, Core"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                    />
+
+                    <p className="mt-2 text-xs text-slate-600">
+                      Separate muscle groups with commas.
+                    </p>
+                  </div>
+
+                  {/* Target gender */}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Target Gender
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {["Male", "Female"].map((gender) => {
+                        const selected = form.targetGender.includes(gender)
 
                         return (
                           <button
-                            key={
-                              gender
-                            }
+                            key={gender}
                             type="button"
                             onClick={() =>
-                              toggleArrayValue(
-                                "targetGender",
-                                gender,
-                              )
+                              setForm((current) => ({
+                                ...current,
+                                targetGender: selected
+                                  ? current.targetGender.filter(
+                                      (item) => item !== gender,
+                                    )
+                                  : [...current.targetGender, gender],
+                              }))
                             }
-                            className={`rounded-xl border px-4 py-3 text-sm font-bold transition ${
+                            className={`rounded-xl px-4 py-3 text-sm font-bold transition ${
                               selected
-                                ? "border-black bg-black text-white"
-                                : "border-gray-200 bg-white text-gray-700 hover:border-black"
+                                ? "bg-lime-400 text-black"
+                                : "border border-white/10 bg-slate-900 text-slate-400"
                             }`}
                           >
-                            {selected
-                              ? "✓ "
-                              : ""}
-
+                            {selected ? "✓ " : ""}
                             {gender}
                           </button>
                         )
-                      },
-                    )}
-
+                      })}
+                    </div>
                   </div>
 
-                </div>
+                  {/* Fitness goals */}
 
-                {/* FITNESS GOALS */}
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Fitness Goals
+                    </label>
 
-                <div className="mt-5">
-
-                  <label className="mb-2 block text-xs font-bold text-gray-600">
-                    Fitness goals
-                  </label>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-
-                    {fitnessGoalOptions.map(
-                      (
-                        goal,
-                      ) => {
-                        const selected =
-                          formData.fitnessGoals?.includes(
-                            goal,
-                          )
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {[
+                        "Lose Weight",
+                        "Keep Fit",
+                        "Gain Weight",
+                        "Train to Become a Trainer",
+                      ].map((goal) => {
+                        const selected = form.fitnessGoals.includes(goal)
 
                         return (
                           <button
-                            key={
-                              goal
-                            }
+                            key={goal}
                             type="button"
                             onClick={() =>
-                              toggleArrayValue(
-                                "fitnessGoals",
-                                goal,
-                              )
+                              setForm((current) => ({
+                                ...current,
+                                fitnessGoals: selected
+                                  ? current.fitnessGoals.filter(
+                                      (item) => item !== goal,
+                                    )
+                                  : [...current.fitnessGoals, goal],
+                              }))
                             }
-                            className={`rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${
+                            className={`rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
                               selected
-                                ? "border-lime-400 bg-lime-400 text-black"
-                                : "border-gray-200 bg-white text-gray-700 hover:border-black"
+                                ? "bg-lime-400 text-black"
+                                : "border border-white/10 bg-slate-900 text-slate-400"
                             }`}
                           >
-                            {selected
-                              ? "✓ "
-                              : ""}
-
+                            {selected ? "✓ " : ""}
                             {goal}
                           </button>
                         )
-                      },
-                    )}
-
+                      })}
+                    </div>
                   </div>
 
-                </div>
-
-              </div>
-
-              {/* DIFFICULTY / EQUIPMENT */}
-
-              <div className="grid gap-4 sm:grid-cols-2">
-
-                <div>
-
-                  <label
-                    htmlFor="difficulty"
-                    className="mb-2 block text-xs font-bold text-gray-600"
-                  >
-                    Difficulty
-                  </label>
-
-                  <select
-                    id="difficulty"
-                    name="difficulty"
-                    value={
-                      formData.difficulty
-                    }
-                    onChange={
-                      handleChange
-                    }
-                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                  >
-                    {difficultyOptions.map(
-                      (
-                        difficulty,
-                      ) => (
-                        <option
-                          key={
-                            difficulty
-                          }
-                          value={
-                            difficulty
-                          }
-                        >
-                          {
-                            difficulty
-                          }
-                        </option>
-                      ),
-                    )}
-                  </select>
-
-                </div>
-
-                <div>
-
-                  <label
-                    htmlFor="equipment"
-                    className="mb-2 block text-xs font-bold text-gray-600"
-                  >
-                    Equipment
-                  </label>
-
-                  <input
-                    id="equipment"
-                    value={(
-                      formData.equipment ||
-                      []
-                    ).join(
-                      ", ",
-                    )}
-                    onChange={
-                      handleEquipmentChange
-                    }
-                    placeholder="e.g. Dumbbells, Bench"
-                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                  />
-
-                  <p className="mt-1 text-xs text-gray-400">
-                    Separate equipment with commas.
-                  </p>
-
-                </div>
-
-              </div>
-
-              {/* DESCRIPTION */}
-
-              <div>
-
-                <label
-                  htmlFor="description"
-                  className="mb-2 block text-xs font-bold text-gray-600"
-                >
-                  Description
-                </label>
-
-                <textarea
-                  id="description"
-                  name="description"
-                  value={
-                    formData.description
-                  }
-                  onChange={
-                    handleChange
-                  }
-                  rows="3"
-                  placeholder="Briefly describe the exercise..."
-                  className="w-full resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm leading-6 outline-none focus:border-black"
-                />
-
-              </div>
-
-              {/* WORKOUT DEFAULTS */}
-
-              <div>
-
-                <p className="mb-3 text-xs font-black uppercase tracking-wider text-gray-500">
-                  Workout defaults
-                </p>
-
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-
-                  {/* SETS */}
+                  {/* Difficulty */}
 
                   <div>
 
-                    <label
-                      htmlFor="sets"
-                      className="mb-2 block text-xs font-bold text-gray-600"
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Difficulty
+                    </label>
+
+                    <select
+                      name="difficulty"
+                      value={
+                        form.difficulty
+                      }
+                      onChange={
+                        handleChange
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-lime-400/50"
                     >
-                      Sets
+                      {DIFFICULTY_OPTIONS.map(
+                        (
+                          difficulty,
+                        ) => (
+                          <option
+                            key={
+                              difficulty
+                            }
+                            value={
+                              difficulty
+                            }
+                          >
+                            {
+                              difficulty
+                            }
+                          </option>
+                        ),
+                      )}
+                    </select>
+
+                  </div>
+
+                  {/* Exercise status */}
+
+                  <div>
+
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Exercise Status
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            isActive: true,
+                          }))
+                        }
+                        className={`rounded-xl px-4 py-3 text-sm font-bold transition ${
+                          form.isActive
+                            ? "bg-lime-400 text-black"
+                            : "border border-white/10 bg-slate-900 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {form.isActive ? "✓ " : ""}
+                        ACTIVE
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            isActive: false,
+                          }))
+                        }
+                        className={`rounded-xl px-4 py-3 text-sm font-bold transition ${
+                          !form.isActive
+                            ? "bg-red-500 text-white"
+                            : "border border-white/10 bg-slate-900 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {!form.isActive ? "✓ " : ""}
+                        INACTIVE
+                      </button>
+
+                    </div>
+
+                    <p className="mt-2 text-xs text-slate-600">
+                      Choose whether this exercise is available for workout programs. You can change this later from Edit.
+                    </p>
+
+                  </div>
+
+                  {/* Sets */}
+
+                  <div>
+
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Default Sets
                     </label>
 
                     <input
-                      id="sets"
-                      name="sets"
+                      name="defaultSets"
                       type="number"
                       min="1"
                       value={
-                        formData.sets
+                        form.defaultSets
                       }
                       onChange={
                         handleChange
                       }
-                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-lime-400/50"
                     />
 
                   </div>
 
-                  {/* REPS */}
+                  {/* Reps */}
 
                   <div>
 
-                    <label
-                      htmlFor="reps"
-                      className="mb-2 block text-xs font-bold text-gray-600"
-                    >
-                      Reps
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Default Reps
                     </label>
 
                     <input
-                      id="reps"
-                      name="reps"
+                      name="defaultReps"
                       type="number"
                       min="1"
                       value={
-                        formData.reps
+                        form.defaultReps
                       }
                       onChange={
                         handleChange
                       }
-                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
+                      placeholder="e.g. 10"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
                     />
 
                   </div>
 
-                  {/* DURATION */}
+                  {/* Duration */}
 
                   <div>
 
-                    <label
-                      htmlFor="duration"
-                      className="mb-2 block text-xs font-bold text-gray-600"
-                    >
-                      Duration (seconds)
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Default Duration
+                      (seconds)
                     </label>
 
                     <input
-                      id="duration"
-                      name="duration"
+                      name="defaultDuration"
                       type="number"
                       min="1"
                       value={
-                        formData.duration
+                        form.defaultDuration
                       }
                       onChange={
                         handleChange
                       }
-                      placeholder="e.g. 30"
-                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
+                      placeholder="Optional"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
                     />
 
                   </div>
 
-                  {/* WEIGHT */}
+                  {/* Rest */}
 
                   <div>
 
-                    <label
-                      htmlFor="weight"
-                      className="mb-2 block text-xs font-bold text-gray-600"
-                    >
-                      Weight
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Default Rest
+                      (seconds)
                     </label>
 
                     <input
-                      id="weight"
-                      name="weight"
+                      name="defaultRest"
+                      type="number"
+                      min="0"
                       value={
-                        formData.weight
+                        form.defaultRest
                       }
                       onChange={
                         handleChange
                       }
-                      placeholder="e.g. 40 kg"
-                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-lime-400/50"
                     />
 
                   </div>
 
-                  {/* REST */}
+                  {/* Calories */}
 
                   <div>
 
-                    <label
-                      htmlFor="rest"
-                      className="mb-2 block text-xs font-bold text-gray-600"
-                    >
-                      Rest
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Calories Estimate
                     </label>
 
                     <input
-                      id="rest"
-                      name="rest"
-                      value={
-                        formData.rest
-                      }
-                      onChange={
-                        handleChange
-                      }
-                      placeholder="60 sec"
-                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                    />
-
-                  </div>
-
-                  {/* CALORIES */}
-
-                  <div>
-
-                    <label
-                      htmlFor="caloriesEstimate"
-                      className="mb-2 block text-xs font-bold text-gray-600"
-                    >
-                      Calories estimate
-                    </label>
-
-                    <input
-                      id="caloriesEstimate"
                       name="caloriesEstimate"
                       type="number"
                       min="0"
                       value={
-                        formData.caloriesEstimate
+                        form.caloriesEstimate
                       }
                       onChange={
                         handleChange
                       }
-                      placeholder="e.g. 120"
-                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
+                      placeholder="Optional"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
                     />
 
                   </div>
@@ -2302,247 +2586,418 @@ function Workouts() {
 
               </div>
 
-              {/* INSTRUCTIONS */}
+              {/* ========================================================== */}
+              {/* DESCRIPTION                                                 */}
+              {/* ========================================================== */}
 
-              <div>
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
 
-                <label
-                  htmlFor="instructions"
-                  className="mb-2 block text-xs font-bold text-gray-600"
-                >
-                  Exercise instructions
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Description
                 </label>
 
                 <textarea
-                  id="instructions"
-                  name="instructions"
+                  name="description"
                   value={
-                    formData.instructions
-                  }
-                  onChange={
-                    handleChange
-                  }
-                  rows="5"
-                  placeholder={
-                    "Write one instruction per line...\nExample: Stand with your feet shoulder-width apart.\nLower your body slowly.\nPush through your heels to return."
-                  }
-                  className="w-full resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm leading-6 outline-none focus:border-black"
-                />
-
-                <p className="mt-1 text-xs text-gray-400">
-                  Put each instruction on a separate line.
-                </p>
-
-              </div>
-
-              {/* SAFETY TIPS */}
-
-              <div>
-
-                <label
-                  htmlFor="safetyTips"
-                  className="mb-2 block text-xs font-bold text-gray-600"
-                >
-                  Safety tips
-                </label>
-
-                <textarea
-                  id="safetyTips"
-                  name="safetyTips"
-                  value={
-                    formData.safetyTips
+                    form.description
                   }
                   onChange={
                     handleChange
                   }
                   rows="4"
-                  placeholder={
-                    "Write one safety tip per line...\nExample: Keep your back neutral.\nUse a weight appropriate for your ability."
-                  }
-                  className="w-full resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm leading-6 outline-none focus:border-black"
+                  placeholder="Describe the exercise..."
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
                 />
 
-                <p className="mt-1 text-xs text-gray-400">
-                  Put each safety tip on a separate line.
+              </div>
+
+              {/* ========================================================== */}
+              {/* INSTRUCTIONS                                                */}
+              {/* ========================================================== */}
+
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
+
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Exercise Instructions
+                </label>
+
+                <textarea
+                  name="instructions"
+                  value={
+                    form.instructions
+                  }
+                  onChange={
+                    handleChange
+                  }
+                  rows="6"
+                  placeholder="Enter one instruction per line..."
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                />
+
+                <p className="mt-2 text-xs text-slate-600">
+                  Enter one instruction
+                  per line.
                 </p>
 
               </div>
 
-              {/* MEDIA */}
+              {/* ========================================================== */}
+              {/* SAFETY TIPS                                                  */}
+              {/* ========================================================== */}
 
-              <div className="rounded-3xl border border-gray-200 p-5">
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
 
-                <div className="flex items-center gap-3">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Safety Tips
+                </label>
 
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-yellow-400">
-                    {formData.mediaType ===
-                    "video" ? (
-                      <Video
-                        size={18}
-                      />
-                    ) : (
-                      <Image
-                        size={18}
-                      />
-                    )}
-                  </div>
+                <textarea
+                  name="safetyTips"
+                  value={form.safetyTips}
+                  onChange={handleChange}
+                  rows="5"
+                  placeholder="Enter one safety tip per line..."
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                />
 
-                  <div>
-                    <p className="text-sm font-black">
-                      Demonstration media
-                    </p>
+                <p className="mt-2 text-xs text-slate-600">
+                  Enter one safety tip per line.
+                </p>
 
-                    <p className="mt-1 text-xs text-gray-500">
-                      Add a picture or video showing the exercise.
-                    </p>
-                  </div>
+              </div>
+
+              {/* ========================================================== */}
+              {/* EQUIPMENT                                                   */}
+              {/* ========================================================== */}
+
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
+
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Equipment
+                </label>
+
+                <input
+                  name="equipment"
+                  value={
+                    form.equipment
+                  }
+                  onChange={
+                    handleChange
+                  }
+                  placeholder="e.g. Barbell, Bench"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-400/50"
+                />
+
+                <p className="mt-2 text-xs text-slate-600">
+                  Separate multiple
+                  items with commas.
+                </p>
+
+              </div>
+
+              {/* ========================================================== */}
+              {/* DEMONSTRATION MEDIA                                         */}
+              {/* ========================================================== */}
+
+              <div className="rounded-2xl border border-white/10 bg -white/[0.02] p-5">
+
+                <div className="mb-5">
+
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime-400">
+                    Demonstration Media
+                  </p>
+
+                  <h3 className="mt-1 text-lg font-black">
+                    Add a picture or
+                    video
+                  </h3>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Choose a file directly
+                    from your laptop,
+                    tablet or phone.
+                  </p>
 
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
+                {/* -------------------------------------------------------- */}
+                {/* Tabs                                                      */}
+                {/* -------------------------------------------------------- */}
+
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-900 p-1">
 
                   <button
                     type="button"
                     onClick={() =>
-                      handleMediaTypeChange(
+                      setMediaTab(
                         "image",
                       )
                     }
-                    className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-black ${
-                      formData.mediaType ===
+                    className={`rounded-lg px-4 py-3 text-sm font-bold transition ${
+                      mediaTab ===
                       "image"
-                        ? "bg-black text-white"
-                        : "bg-gray-100"
+                        ? "bg-yellow-400 text-black"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    <Image
-                      size={15}
-                    />
                     IMAGE
                   </button>
 
                   <button
                     type="button"
                     onClick={() =>
-                      handleMediaTypeChange(
+                      setMediaTab(
                         "video",
                       )
                     }
-                    className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-black ${
-                      formData.mediaType ===
+                    className={`rounded-lg px-4 py-3 text-sm font-bold transition ${
+                      mediaTab ===
                       "video"
-                        ? "bg-black text-white"
-                        : "bg-gray-100"
+                        ? "bg-yellow-400 text-black"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    <Video
-                      size={15}
-                    />
                     VIDEO
                   </button>
 
                 </div>
 
-                <input
-                  ref={
-                    fileInputRef
-                  }
-                  type="file"
-                  accept={
-                    formData.mediaType ===
-                    "video"
-                      ? "video/*"
-                      : "image/*"
-                  }
-                  onChange={
-                    handleFileChange
-                  }
-                  className="hidden"
-                />
+                {/* -------------------------------------------------------- */}
+                {/* IMAGE UPLOAD                                               */}
+                {/* -------------------------------------------------------- */}
 
-                <button
-                  type="button"
-                  onClick={
-                    openFilePicker
-                  }
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-5 py-5 text-sm font-black transition hover:border-black hover:bg-gray-100"
-                >
-                  {formData.mediaType ===
-                  "video" ? (
-                    <Video
-                      size={20}
-                    />
-                  ) : (
-                    <Image
-                      size={20}
-                    />
-                  )}
+                {mediaTab ===
+                  "image" && (
+                  <div className="mt-5">
 
-                  {selectedFile
-                    ? "CHANGE FILE"
-                    : formData.mediaType ===
-                        "video"
-                      ? "CHOOSE VIDEO"
-                      : "CHOOSE IMAGE"}
-                </button>
+                    <label className="block cursor-pointer">
 
-                {selectedFile && (
-                  <div className="mt-3 rounded-2xl bg-gray-100 p-3">
+                      <div className="overflow-hidden rounded-2xl border-2 border-dashed border-white/10 bg-black transition hover:border-yellow-400/40">
 
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                      Selected file
-                    </p>
+                        {imagePreview ? (
+                          <div>
 
-                    <p className="mt-1 break-all text-sm font-bold">
-                      {
-                        selectedFile.name
-                      }
-                    </p>
+                            <img
+                              src={
+                                imagePreview
+                              }
+                              alt="Exercise preview"
+                              className="max-h-72 w-full object-contain"
+                            />
 
-                    <p className="mt-1 text-xs text-gray-500">
-                      {(
-                        selectedFile.size /
-                        1024 /
-                        1024
-                      ).toFixed(
-                        2,
-                      )}{" "}
-                      MB
-                    </p>
+                            <div className="border-t border-white/10 px-4 py-4">
+
+                              <p className="text-sm font-bold text-white">
+                                {imageFile
+                                  ? imageFile.name
+                                  : "Current exercise image"}
+                              </p>
+
+                              {imageFile && (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {
+                                    formatFileSize(
+                                      imageFile.size,
+                                    )
+                                  }
+                                </p>
+                              )}
+
+                              <p className="mt-3 text-xs font-semibold text-yellow-400">
+                                Click to choose a
+                                different image
+                              </p>
+
+                            </div>
+
+                          </div>
+                        ) : (
+                          <div className="flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center">
+
+                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-yellow-400 text-3xl text-black">
+                              🖼️
+                            </div>
+
+                            <h4 className="mt-5 text-base font-black">
+                              Choose an image
+                            </h4>
+
+                            <p className="mt-2 text-sm text-slate-500">
+                              Tap here to select
+                              a picture from your
+                              device.
+                            </p>
+
+                            <p className="mt-3 text-xs text-slate-600">
+                              JPG, PNG, WEBP or
+                              GIF · Maximum 10 MB
+                            </p>
+
+                          </div>
+                        )}
+
+                      </div>
+
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={
+                          handleImageChange
+                        }
+                        className="hidden"
+                      />
+
+                    </label>
 
                   </div>
                 )}
 
-                {previewUrl && (
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-black">
+                {/* -------------------------------------------------------- */}
+                {/* VIDEO UPLOAD                                               */}
+                {/* -------------------------------------------------------- */}
 
-                    <div className="px-4 py-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                        Preview
-                      </p>
-                    </div>
+                {mediaTab ===
+                  "video" && (
+                  <div className="mt-5">
 
-                    <div className="aspect-[9/16] w-full">
+                    <label className="block cursor-pointer">
 
-                      {formData.mediaType ===
-                      "video" ? (
-                        <video
-                          src={
-                            previewUrl
-                          }
-                          controls
-                          playsInline
-                          preload="metadata"
-                          className="h-full w-full object-contain"
-                        />
-                      ) : (
-                        <img
-                          src={
-                            previewUrl
-                          }
-                          alt="Exercise demonstration preview"
-                          className="h-full w-full object-contain"
-                        />
+                      <div className="overflow-hidden rounded-2xl border-2 border-dashed border-white/10 bg-black transition hover:border-yellow-400/40">
+
+                        {videoPreview ? (
+                          <div>
+
+                            <video
+                              src={
+                                videoPreview
+                              }
+                              controls
+                              preload="metadata"
+                              className="max-h-80 w-full bg-black"
+                            />
+
+                            <div className="border-t border-white/10 px-4 py-4">
+
+                              <p className="text-sm font-bold text-white">
+                                {videoFile
+                                  ? videoFile.name
+                                  : "Current exercise video"}
+                              </p>
+
+                              {videoFile && (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {
+                                    formatFileSize(
+                                      videoFile.size,
+                                    )
+                                  }
+                                </p>
+                              )}
+
+                              <p className="mt-3 text-xs font-semibold text-yellow-400">
+                                Click to choose a
+                                different video
+                              </p>
+
+                            </div>
+
+                          </div>
+                        ) : (
+                          <div className="flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center">
+
+                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-yellow-400 text-3xl text-black">
+                              🎥
+                            </div>
+
+                            <h4 className="mt-5 text-base font-black">
+                              Choose a video
+                            </h4>
+
+                            <p className="mt-2 text-sm text-slate-500">
+                              Tap here to select
+                              a demonstration
+                              video from your
+                              device.
+                            </p>
+
+                            <p className="mt-3 text-xs text-slate-600">
+                              MP4, WEBM, MOV or
+                              AVI · Maximum 100 MB
+                            </p>
+
+                          </div>
+                        )}
+
+                      </div>
+
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm,video/quicktime,video/x-msvideo"
+                        onChange={
+                          handleVideoChange
+                        }
+                        className="hidden"
+                      />
+
+                    </label>
+
+                  </div>
+                )}
+
+                {/* -------------------------------------------------------- */}
+                {/* Selected files summary                                    */}
+                {/* -------------------------------------------------------- */}
+
+                {(imageFile ||
+                  videoFile) && (
+                  <div className="mt-5 rounded-xl border border-lime-400/20 bg-lime-400/5 p-4">
+
+                    <p className="text-xs font-bold uppercase tracking-wider text-lime-400">
+                      Files selected
+                    </p>
+
+                    <div className="mt-3 space-y-2">
+
+                      {imageFile && (
+                        <div className="flex items-center justify-between gap-3 text-sm">
+
+                          <span className="truncate text-slate-300">
+                            🖼️{" "}
+                            {
+                              imageFile.name
+                            }
+                          </span>
+
+                          <span className="shrink-0 text-xs text-slate-500">
+                            {
+                              formatFileSize(
+                                imageFile.size,
+                              )
+                            }
+                          </span>
+
+                        </div>
+                      )}
+
+                      {videoFile && (
+                        <div className="flex items-center justify-between gap-3 text-sm">
+
+                          <span className="truncate text-slate-300">
+                            🎥{" "}
+                            {
+                              videoFile.name
+                            }
+                          </span>
+
+                          <span className="shrink-0 text-xs text-slate-500">
+                            {
+                              formatFileSize(
+                                videoFile.size,
+                              )
+                            }
+                          </span>
+
+                        </div>
                       )}
 
                     </div>
@@ -2550,84 +3005,35 @@ function Workouts() {
                   </div>
                 )}
 
-                {!selectedFile &&
-                  !previewUrl &&
-                  !editingExercise && (
-                    <div className="mt-4 rounded-2xl bg-gray-50 p-4">
-                      <p className="text-xs text-gray-500">
-                        Select an image or video from your computer.
-                      </p>
-                    </div>
-                  )}
-
               </div>
 
-              {/* STATUS */}
+              {/* ========================================================== */}
+              {/* ACTIONS                                                      */}
+              {/* ========================================================== */}
 
-              <div>
-
-                <label
-                  htmlFor="status"
-                  className="mb-2 block text-xs font-bold text-gray-600"
-                >
-                  Status
-                </label>
-
-                <select
-                  id="status"
-                  name="status"
-                  value={
-                    formData.status
-                  }
-                  onChange={
-                    handleChange
-                  }
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold outline-none focus:border-black"
-                >
-                  <option value="Active">
-                    Active
-                  </option>
-
-                  <option value="Inactive">
-                    Inactive
-                  </option>
-                </select>
-
-              </div>
-
-              {/* BUTTONS */}
-
-              <div className="flex gap-3 pt-2">
+              <div className="flex flex-col-reverse gap-3 border-t border-white/10 pt-5 sm:flex-row sm:justify-end">
 
                 <button
                   type="button"
                   onClick={
                     closeForm
                   }
-                  disabled={
-                    saving
-                  }
-                  className="flex-1 rounded-2xl bg-gray-100 px-5 py-4 text-sm font-black disabled:opacity-50"
+                  disabled={saving}
+                  className="rounded-xl border border-white/10 px-6 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/5 disabled:opacity-50"
                 >
-                  CANCEL
+                  Cancel
                 </button>
 
                 <button
                   type="submit"
-                  disabled={
-                    saving
-                  }
-                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-yellow-400 px-5 py-4 text-sm font-black text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={saving}
+                  className="rounded-xl bg-yellow-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Check
-                    size={18}
-                  />
-
                   {saving
-                    ? "SAVING..."
+                    ? "Uploading & Saving..."
                     : editingExercise
-                      ? "SAVE CHANGES"
-                      : "CREATE EXERCISE"}
+                      ? "Save Changes"
+                      : "Create Exercise"}
                 </button>
 
               </div>
@@ -2642,35 +3048,3 @@ function Workouts() {
     </div>
   )
 }
-
-/*
-|--------------------------------------------------------------------------
-| Parse rest time
-|--------------------------------------------------------------------------
-*/
-
-function parseRest(
-  value,
-) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return 60
-  }
-
-  const match =
-    String(value).match(
-      /\d+/,
-    )
-
-  if (!match) {
-    return 60
-  }
-
-  return Number(
-    match[0],
-  )
-}
-
-export default Workouts
